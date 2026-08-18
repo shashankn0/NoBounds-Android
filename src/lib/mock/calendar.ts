@@ -19,3 +19,14 @@ export function getMonthGrid(date: Date) {
 
   return { weeks, weekdayLabels: WEEKDAY_LABELS, monthLabel: date.toLocaleDateString(undefined, { month: 'long', year: 'numeric' }) };
 }
+
+export function getWeekDays(date: Date) {
+  const startOfWeek = new Date(date);
+  startOfWeek.setDate(date.getDate() - date.getDay());
+
+  return Array.from({ length: 7 }, (_, i) => {
+    const day = new Date(startOfWeek);
+    day.setDate(startOfWeek.getDate() + i);
+    return { date: day.getDate(), weekdayLabel: WEEKDAY_LABELS[i] };
+  });
+}

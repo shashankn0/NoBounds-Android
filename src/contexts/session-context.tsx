@@ -7,10 +7,17 @@ type Profile = {
   id: string;
   display_name: string;
   avatar_url: string | null;
+  time_zone: string | null;
+  created_at: string;
 };
 
 type Couple = {
   id: string;
+};
+
+type AppSettings = {
+  palette_id: string;
+  appearance_mode: 'system' | 'light' | 'dark';
 };
 
 type SessionContextValue = {
@@ -18,7 +25,9 @@ type SessionContextValue = {
   session: Session | null;
   profile: Profile | null;
   couple: Couple | null;
+  appSettings: AppSettings | null;
   refreshCouple: () => Promise<void>;
+  refreshProfile: () => Promise<void>;
   signOut: () => Promise<void>;
 };
 
@@ -29,23 +38,29 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [couple, setCouple] = useState<Couple | null>(null);
+  const [appSettings, setAppSettings] = useState<AppSettings | null>(null);
 
   async function loadForSession(nextSession: Session | null) {
     if (!nextSession) {
       setProfile(null);
       setCouple(null);
+      setAppSettings(null);
       return;
     }
 
     const { data: profileRow } = await supabase.rpc('ensure_own_profile').single();
     setProfile((profileRow as Profile) ?? null);
 
-    const { data: memberRow } = await supabase
-      .from('couple_members')
-      .select('couple_id')
-      .eq('user_id', nextSession.user.id)
-      .maybeSingle();
+    const [{ data: memberRow }, { data: settingsRow }] = await Promise.all([
+      supabase.from('couple_members').select('couple_id').eq('user_id', nextSession.user.id).maybeSingle(),
+      supabase
+        .from('user_app_settings')
+        .select('palette_id, appearance_mode')
+        .eq('user_id', nextSession.user.id)
+        .maybeSingle(),
+    ]);
     setCouple(memberRow ? { id: memberRow.couple_id } : null);
+    setAppSettings((settingsRow as AppSettings | null) ?? null);
   }
 
   useEffect(() => {
@@ -67,13 +82,23 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     await loadForSession(session);
   }
 
+  async function refreshProfile() {
+    if (!session) return;
+    const { data: profileRow } = await supabase
+      .from('profiles')
+      .select('id, display_name, avatar_url, time_zone, created_at')
+      .eq('id', session.user.id)
+      .single();
+    setProfile((profileRow as Profile) ?? null);
+  }
+
   async function signOut() {
     await supabase.auth.signOut();
   }
 
   return (
     <SessionContext.Provider
-      value={{ isLoading, session, profile, couple, refreshCouple, signOut }}>
+      value={{ isLoading, session, profile, couple, appSettings, refreshCouple, refreshProfile, signOut }}>
       {children}
     </SessionContext.Provider>
   );

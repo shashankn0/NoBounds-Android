@@ -4,7 +4,9 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Palettes, type PaletteId } from '@/constants/palettes';
 import { usePalette } from '@/contexts/palette-context';
+import { useSession } from '@/contexts/session-context';
 import { useTheme } from '@/hooks/use-theme';
+import { supabase } from '@/lib/supabase';
 
 const MODES: { id: 'light' | 'dark' | 'system'; label: string }[] = [
   { id: 'system', label: 'System' },
@@ -14,14 +16,34 @@ const MODES: { id: 'light' | 'dark' | 'system'; label: string }[] = [
 
 export default function AppearanceScreen() {
   const theme = useTheme();
+  const { session } = useSession();
   const { paletteId, setPaletteId, appearanceMode, setAppearanceMode, isDark } = usePalette();
+
+  function persist(next: { palette_id?: PaletteId; appearance_mode?: 'light' | 'dark' | 'system' }) {
+    if (!session) return;
+    supabase
+      .from('user_app_settings')
+      .update({ ...next, updated_at: new Date().toISOString() })
+      .eq('user_id', session.user.id)
+      .then(() => {});
+  }
+
+  function onSelectMode(mode: 'light' | 'dark' | 'system') {
+    setAppearanceMode(mode);
+    persist({ appearance_mode: mode });
+  }
+
+  function onSelectPalette(id: PaletteId) {
+    setPaletteId(id);
+    persist({ palette_id: id });
+  }
 
   return (
     <ThemedView style={{ flex: 1 }}>
       <ScrollView contentContainerStyle={styles.container}>
         <View style={[styles.segmented, { backgroundColor: theme.backgroundSecondary }]}>
           {MODES.map((mode) => (
-            <Pressable key={mode.id} onPress={() => setAppearanceMode(mode.id)} style={styles.segmentWrap}>
+            <Pressable key={mode.id} onPress={() => onSelectMode(mode.id)} style={styles.segmentWrap}>
               <View
                 style={[
                   styles.segment,
@@ -41,7 +63,7 @@ export default function AppearanceScreen() {
           const colors = palette[isDark ? 'dark' : 'light'];
           const selected = paletteId === palette.id;
           return (
-            <Pressable key={palette.id} onPress={() => setPaletteId(palette.id as PaletteId)}>
+            <Pressable key={palette.id} onPress={() => onSelectPalette(palette.id as PaletteId)}>
               <View
                 style={[
                   styles.paletteCard,

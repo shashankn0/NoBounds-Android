@@ -1,16 +1,35 @@
 import { DarkTheme, DefaultTheme, Stack, ThemeProvider, type Theme } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
+import { Palettes, type PaletteId } from '@/constants/palettes';
 import { SessionProvider, useSession } from '@/contexts/session-context';
 import { PaletteProvider, usePalette } from '@/contexts/palette-context';
 
 SplashScreen.preventAutoHideAsync();
 
 function RootNavigator() {
-  const { isLoading, session } = useSession();
-  const { isDark, colors } = usePalette();
+  const { isLoading, session, appSettings } = useSession();
+  const { isDark, colors, setPaletteId, setAppearanceMode } = usePalette();
+  const hasHydratedPalette = useRef(false);
+
+  // Pull the user's saved palette/appearance mode down from Supabase once per session, so a
+  // local device switch doesn't get clobbered on every re-render.
+  useEffect(() => {
+    if (!appSettings || hasHydratedPalette.current) return;
+    hasHydratedPalette.current = true;
+    if (appSettings.palette_id in Palettes) {
+      setPaletteId(appSettings.palette_id as PaletteId);
+    }
+    setAppearanceMode(appSettings.appearance_mode);
+  }, [appSettings, setPaletteId, setAppearanceMode]);
+
+  useEffect(() => {
+    if (!session) {
+      hasHydratedPalette.current = false;
+    }
+  }, [session]);
 
   const navTheme = useMemo<Theme>(() => {
     const base = isDark ? DarkTheme : DefaultTheme;
@@ -56,6 +75,9 @@ function RootNavigator() {
           <Stack.Screen name="calendar" options={{ headerShown: true, title: 'Calendar' }} />
           <Stack.Screen name="cycle-tracking" options={{ headerShown: true, title: 'Cycle tracking' }} />
           <Stack.Screen name="weekly-share" options={{ headerShown: true, title: 'Weekly share' }} />
+          <Stack.Screen name="habit-form" options={{ presentation: 'modal' }} />
+          <Stack.Screen name="memory-form" options={{ presentation: 'modal' }} />
+          <Stack.Screen name="extensions" options={{ presentation: 'modal' }} />
         </Stack.Protected>
       </Stack>
     </ThemeProvider>

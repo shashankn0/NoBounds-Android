@@ -10,11 +10,39 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { useSession } from '@/contexts/session-context';
 import { useTheme } from '@/hooks/use-theme';
+import { supabase } from '@/lib/supabase';
+
+const deviceTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
 export default function ProfileScreen() {
   const theme = useTheme();
-  const { profile } = useSession();
+  const { session, profile, refreshProfile } = useSession();
   const [name, setName] = useState(profile?.display_name ?? '');
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function onSaveName() {
+    if (!session || name.trim().length === 0) return;
+    setSaving(true);
+    setSaved(false);
+    setError(null);
+    const { error: updateError } = await supabase
+      .from('profiles')
+      .update({
+        display_name: name.trim(),
+        time_zone: profile?.time_zone ?? deviceTimeZone,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', session.user.id);
+    setSaving(false);
+    if (updateError) {
+      setError(updateError.message);
+      return;
+    }
+    setSaved(true);
+    await refreshProfile();
+  }
 
   return (
     <ThemedView style={{ flex: 1 }}>
@@ -38,12 +66,29 @@ export default function ProfileScreen() {
             placeholder="Your name"
             placeholderTextColor={theme.textSecondary}
             value={name}
-            onChangeText={setName}
+            onChangeText={(text) => {
+              setName(text);
+              setSaved(false);
+            }}
             style={[styles.input, { color: theme.textPrimary, borderColor: theme.border }]}
           />
           <View style={styles.cardButton}>
-            <NBPrimaryButton title="Save name" />
+            <NBPrimaryButton
+              title={saving ? 'Saving…' : 'Save name'}
+              onPress={onSaveName}
+              disabled={saving || name.trim().length === 0}
+            />
           </View>
+          {saved ? (
+            <ThemedText type="small" themeColor="textSecondary" style={styles.savedText}>
+              Saved.
+            </ThemedText>
+          ) : null}
+          {error ? (
+            <ThemedText type="small" themeColor="destructive" style={styles.savedText}>
+              {error}
+            </ThemedText>
+          ) : null}
         </NBCard>
 
         <NBCard>
@@ -51,14 +96,20 @@ export default function ProfileScreen() {
             Time zone
           </ThemedText>
           <ThemedText type="default" style={styles.rowValue}>
-            {Intl.DateTimeFormat().resolvedOptions().timeZone}
+            {(profile?.time_zone ?? deviceTimeZone).replace(/_/g, ' ')}
           </ThemedText>
           <View style={[styles.divider, { backgroundColor: theme.separator }]} />
           <ThemedText type="small" themeColor="textSecondary">
             Member since
           </ThemedText>
           <ThemedText type="default" style={styles.rowValue}>
-            {new Date().toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' })}
+            {profile
+              ? new Date(profile.created_at).toLocaleDateString(undefined, {
+                  month: 'long',
+                  day: 'numeric',
+                  year: 'numeric',
+                })
+              : '—'}
           </ThemedText>
         </NBCard>
 
@@ -79,6 +130,7 @@ const styles = StyleSheet.create({
   avatar: { width: 96, height: 96, borderRadius: 48, alignItems: 'center', justifyContent: 'center' },
   input: { borderBottomWidth: 1, paddingVertical: 8, fontSize: 16, marginTop: 4, marginBottom: 4 },
   cardButton: { marginTop: 8 },
+  savedText: { marginTop: 8 },
   rowValue: { marginTop: 2, marginBottom: 8 },
   divider: { height: 1, marginBottom: 8 },
   rowsCard: { paddingVertical: 4 },
