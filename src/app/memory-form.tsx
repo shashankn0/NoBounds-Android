@@ -11,6 +11,7 @@ import { ThemedView } from '@/components/themed-view';
 import { useSession } from '@/contexts/session-context';
 import { useTheme } from '@/hooks/use-theme';
 import { supabase } from '@/lib/supabase';
+import { uploadPrivate } from '@/lib/storage';
 
 const MAX_PHOTOS = 10;
 
@@ -40,35 +41,40 @@ export default function MemoryFormScreen() {
     setSaving(true);
     setError(null);
 
-    // The prototype's `memories` table only has a single photo_url column — the real app
+    // The prototype's `memories` table only has a single photo_path column — the real app
     // supports multiple photos per memory via a separate table, not wired up here yet.
-    let photoUrl: string | null = null;
+    const caption = notes.trim().length > 0 ? `${title.trim()} — ${notes.trim()}` : title.trim();
+
+    // Insert first (no photo yet) so the memory's own ID exists to scope the upload path —
+    // memory-photos is a private bucket whose RLS ties each file to its owning memory's ID.
+    const { data: inserted, error: insertError } = await supabase
+      .from('memories')
+      .insert({ couple_id: couple.id, caption })
+      .select('id')
+      .single();
+
+    if (insertError || !inserted) {
+      setSaving(false);
+      setError(insertError?.message ?? 'Could not save memory');
+      return;
+    }
+
     const firstUri = photoUris[0];
     if (firstUri) {
       const response = await fetch(firstUri);
       const blob = await response.blob();
-      const path = `${couple.id}/${Date.now()}.jpg`;
-      const { error: uploadError } = await supabase.storage.from('memories').upload(path, blob, {
-        contentType: 'image/jpeg',
-      });
-      if (uploadError) {
-        setError(uploadError.message);
+      const path = `${inserted.id}/${Date.now()}.jpg`;
+      try {
+        await uploadPrivate('memory-photos', path, blob, 'image/jpeg');
+        await supabase.from('memories').update({ photo_path: path }).eq('id', inserted.id);
+      } catch (err) {
         setSaving(false);
+        setError(err instanceof Error ? err.message : 'Memory saved, but the photo failed to upload');
         return;
       }
-      photoUrl = supabase.storage.from('memories').getPublicUrl(path).data.publicUrl;
     }
-
-    const caption = notes.trim().length > 0 ? `${title.trim()} — ${notes.trim()}` : title.trim();
-    const { error: insertError } = await supabase
-      .from('memories')
-      .insert({ couple_id: couple.id, caption, photo_url: photoUrl });
 
     setSaving(false);
-    if (insertError) {
-      setError(insertError.message);
-      return;
-    }
     router.back();
   }
 

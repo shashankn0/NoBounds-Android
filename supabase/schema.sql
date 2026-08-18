@@ -425,6 +425,11 @@ create table if not exists public.memories (
   created_at timestamptz not null default now()
 );
 
+-- photo_path replaces photo_url going forward: a bare storage path in the private
+-- memory-photos bucket, resolved to a signed URL client-side. photo_url is kept (unused) rather
+-- than renamed, since Postgres has no RENAME COLUMN IF EXISTS and this keeps the file idempotent.
+alter table public.memories add column if not exists photo_path text;
+
 alter table public.memories enable row level security;
 
 drop policy if exists "memories_select_couple" on public.memories;
@@ -434,16 +439,271 @@ drop policy if exists "memories_insert_couple" on public.memories;
 create policy "memories_insert_couple" on public.memories
   for insert with check (public.is_couple_member(couple_id) and author_id = auth.uid());
 
--- ============ storage (memory photos) ============
+-- ============ timeline: unified feed (mirrors iOS's timeline_feed RPC) ============
+-- presence_photos: nothing writes to this yet (Bound's camera capture isn't wired up in this
+-- prototype), but the table + RLS exist so the "Photos" filter has a real, empty source instead
+-- of being unbuildable — and so Bound can start writing here later without a schema change.
+create table if not exists public.presence_photos (
+  id uuid primary key default gen_random_uuid(),
+  couple_id uuid not null references public.couples (id) on delete cascade,
+  user_id uuid not null references auth.users (id) on delete cascade,
+  storage_path text,
+  caption text,
+  mood_tag text,
+  created_at timestamptz not null default now()
+);
+
+alter table public.presence_photos enable row level security;
+
+drop policy if exists "presence_photos_select" on public.presence_photos;
+create policy "presence_photos_select" on public.presence_photos
+  for select using (public.is_couple_member(couple_id));
+drop policy if exists "presence_photos_insert" on public.presence_photos;
+create policy "presence_photos_insert" on public.presence_photos
+  for insert with check (user_id = auth.uid() and public.is_couple_member(couple_id));
+drop policy if exists "presence_photos_update_own" on public.presence_photos;
+create policy "presence_photos_update_own" on public.presence_photos
+  for update using (user_id = auth.uid()) with check (user_id = auth.uid());
+drop policy if exists "presence_photos_delete_own" on public.presence_photos;
+create policy "presence_photos_delete_own" on public.presence_photos
+  for delete using (user_id = auth.uid());
+
+-- timeline_milestones: no auto-generator (e.g. "30 days together") exists yet either — couple
+-- members can still read/write rows here directly, matching iOS's RLS, so this is ready for
+-- whichever milestone-generation logic gets built later.
+create table if not exists public.timeline_milestones (
+  id uuid primary key default gen_random_uuid(),
+  couple_id uuid not null references public.couples (id) on delete cascade,
+  milestone_key text not null,
+  title text not null,
+  body text,
+  occurred_at timestamptz not null default now(),
+  created_by_user_id uuid references auth.users (id) on delete set null,
+  created_at timestamptz not null default now()
+);
+
+alter table public.timeline_milestones enable row level security;
+
+drop policy if exists "timeline_milestones_select" on public.timeline_milestones;
+create policy "timeline_milestones_select" on public.timeline_milestones
+  for select using (public.is_couple_member(couple_id));
+drop policy if exists "timeline_milestones_insert" on public.timeline_milestones;
+create policy "timeline_milestones_insert" on public.timeline_milestones
+  for insert with check (
+    public.is_couple_member(couple_id)
+    and (created_by_user_id is null or created_by_user_id = auth.uid())
+  );
+drop policy if exists "timeline_milestones_update" on public.timeline_milestones;
+create policy "timeline_milestones_update" on public.timeline_milestones
+  for update using (public.is_couple_member(couple_id)) with check (public.is_couple_member(couple_id));
+drop policy if exists "timeline_milestones_delete" on public.timeline_milestones;
+create policy "timeline_milestones_delete" on public.timeline_milestones
+  for delete using (public.is_couple_member(couple_id));
+
+-- timeline_favorites: a generic star, works across all four item types — mirrors iOS exactly.
+create table if not exists public.timeline_favorites (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users (id) on delete cascade,
+  entity_type text not null check (entity_type in ('memory', 'photo', 'prompt', 'milestone')),
+  entity_id uuid not null,
+  created_at timestamptz not null default now(),
+  unique (user_id, entity_type, entity_id)
+);
+
+alter table public.timeline_favorites enable row level security;
+
+drop policy if exists "timeline_favorites_select_own" on public.timeline_favorites;
+create policy "timeline_favorites_select_own" on public.timeline_favorites
+  for select using (user_id = auth.uid());
+drop policy if exists "timeline_favorites_insert_own" on public.timeline_favorites;
+create policy "timeline_favorites_insert_own" on public.timeline_favorites
+  for insert with check (user_id = auth.uid());
+drop policy if exists "timeline_favorites_delete_own" on public.timeline_favorites;
+create policy "timeline_favorites_delete_own" on public.timeline_favorites
+  for delete using (user_id = auth.uid());
+
+-- Unions memories/photos/prompts/milestones into one sorted, cursor-paginated feed — same shape
+-- and rules as iOS's `timeline_feed` RPC:
+--   * item_types = null means "no type filter", but milestones are excluded from that unfiltered
+--     view (and from every filter except an explicit milestone filter) — matching iOS's
+--     `visibleItems` client-side rule that milestones only show up when deliberately selected.
+--   * favorites_only intersects with the same milestone-exclusion rule (favorites is not itself
+--     a type filter).
+--   * A "prompt" item only appears once both partners have answered (i.e. revealed).
+create or replace function public.timeline_feed(
+  p_limit int,
+  p_before timestamptz default null,
+  p_before_item_id text default null,
+  p_item_types text[] default null,
+  p_favorites_only boolean default false,
+  p_search text default null,
+  p_on_date date default null
+)
+returns table (
+  item_type text,
+  item_id text,
+  occurred_at timestamptz,
+  title text,
+  subtitle text,
+  entity_type text,
+  entity_id uuid,
+  is_favorite boolean
+)
+language plpgsql
+security definer set search_path = public
+stable
+as $$
+declare
+  my_couple_id uuid;
+begin
+  select couple_id into my_couple_id from public.couple_members where user_id = auth.uid();
+  if my_couple_id is null then
+    return;
+  end if;
+
+  return query
+  with unified as (
+    select 'memory'::text as item_type, m.id::text as item_id, m.created_at as occurred_at,
+           m.caption as title, null::text as subtitle, 'memory'::text as entity_type, m.id as entity_id
+    from public.memories m
+    where m.couple_id = my_couple_id
+
+    union all
+
+    select 'photo'::text, p.id::text, p.created_at,
+           coalesce(p.caption, 'Partner presence'), p.mood_tag, 'photo'::text, p.id
+    from public.presence_photos p
+    where p.couple_id = my_couple_id
+
+    union all
+
+    select 'prompt'::text, cdp.id::text, cdp.created_at,
+           pt.text, null::text, 'prompt'::text, cdp.id
+    from public.couple_daily_prompts cdp
+    join public.prompt_templates pt on pt.id = cdp.prompt_template_id
+    where cdp.couple_id = my_couple_id
+      and (select count(*) from public.prompt_answers pa where pa.couple_daily_prompt_id = cdp.id) >= 2
+
+    union all
+
+    select 'milestone'::text, tm.id::text, tm.occurred_at,
+           tm.title, tm.body, 'milestone'::text, tm.id
+    from public.timeline_milestones tm
+    where tm.couple_id = my_couple_id
+  ),
+  favorited as (
+    select
+      u.*,
+      exists (
+        select 1 from public.timeline_favorites f
+        where f.user_id = auth.uid() and f.entity_type = u.entity_type and f.entity_id = u.entity_id
+      ) as is_favorite
+    from unified u
+  )
+  select f.item_type, f.item_id, f.occurred_at, f.title, f.subtitle, f.entity_type, f.entity_id, f.is_favorite
+  from favorited f
+  where (p_item_types is null or f.item_type = any(p_item_types))
+    and (not p_favorites_only or f.is_favorite)
+    and (p_search is null or f.title ilike '%' || p_search || '%')
+    and (p_on_date is null or f.occurred_at::date = p_on_date)
+    and (p_before is null or f.occurred_at < p_before
+         or (f.occurred_at = p_before and f.item_id < p_before_item_id))
+    and (f.item_type <> 'milestone' or (p_item_types is not null and 'milestone' = any(p_item_types)))
+  order by f.occurred_at desc, f.item_id desc
+  limit p_limit;
+end;
+$$;
+
+-- ============ storage: private buckets + signed URLs + path-based ownership ============
 -- Note: storage.objects/storage.buckets live in the `storage` schema, not `public` — if you ever
 -- reset with `drop schema public cascade`, these survive and this section alone stays re-runnable.
-insert into storage.buckets (id, name, public)
-values ('memories', 'memories', true)
-on conflict (id) do nothing;
+--
+-- Mirrors the real NoBounds iOS storage model: four private buckets (no public URLs — every
+-- read goes through a short-lived signed URL, generated client-side via
+-- supabase.storage.from(bucket).createSignedUrl()), a 5MB size cap + image-only mime allowlist
+-- enforced by the bucket itself, and RLS that re-derives the owning user/couple/memory from the
+-- file's own path (its first path segment) rather than trusting "any authenticated user".
+--
+-- Path convention: avatars/{userId}/{file}, presence/{coupleId}/{file},
+-- memory-photos/{memoryId}/{file}, prompt-photos/{coupleId}/{file}.
+--
+-- The `on conflict ... do update set public = false, ...` on every insert below doubles as a
+-- standing hardening check: re-running this file always forces these buckets back to private
+-- with the right limits, even if something toggled them in the dashboard.
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values
+  ('avatars', 'avatars', false, 5242880, array['image/jpeg', 'image/png', 'image/heic', 'image/heif']),
+  ('presence', 'presence', false, 5242880, array['image/jpeg', 'image/png', 'image/heic', 'image/heif']),
+  ('memory-photos', 'memory-photos', false, 5242880, array['image/jpeg', 'image/png', 'image/heic', 'image/heif']),
+  ('prompt-photos', 'prompt-photos', false, 5242880, array['image/jpeg', 'image/png', 'image/heic', 'image/heif'])
+on conflict (id) do update set
+  public = false,
+  file_size_limit = excluded.file_size_limit,
+  allowed_mime_types = excluded.allowed_mime_types;
 
-drop policy if exists "memories_bucket_read" on storage.objects;
-create policy "memories_bucket_read" on storage.objects
-  for select using (bucket_id = 'memories');
-drop policy if exists "memories_bucket_insert_authenticated" on storage.objects;
-create policy "memories_bucket_insert_authenticated" on storage.objects
-  for insert with check (bucket_id = 'memories' and auth.role() = 'authenticated');
+-- Extracts the owning ID from an object's path (its first "folder" segment). One shared helper
+-- for all four buckets — iOS has three near-identical, separately-named versions of this same
+-- one-liner; this is the same logic, DRY'd into one.
+create or replace function public.storage_owner_id(object_name text)
+returns uuid
+language sql
+stable
+as $$
+  select nullif((storage.foldername(object_name))[1], '')::uuid;
+$$;
+
+-- Does the caller belong to a couple that has this memory?
+create or replace function public.can_access_memory(p_memory_id uuid)
+returns boolean
+language sql
+security definer set search_path = public
+stable
+as $$
+  select exists (
+    select 1 from public.memories m
+    where m.id = p_memory_id and public.is_couple_member(m.couple_id)
+  );
+$$;
+
+-- avatars: owned by the uploading user; readable by them or their paired partner.
+drop policy if exists "avatars_select_own_or_partner" on storage.objects;
+create policy "avatars_select_own_or_partner" on storage.objects
+  for select using (
+    bucket_id = 'avatars'
+    and (
+      public.storage_owner_id(name) = auth.uid()
+      or exists (
+        select 1 from public.couple_members self_member
+        join public.couple_members partner_member on partner_member.couple_id = self_member.couple_id
+        where self_member.user_id = auth.uid()
+          and partner_member.user_id = public.storage_owner_id(name)
+      )
+    )
+  );
+drop policy if exists "avatars_write_own" on storage.objects;
+create policy "avatars_write_own" on storage.objects
+  for insert with check (bucket_id = 'avatars' and public.storage_owner_id(name) = auth.uid());
+drop policy if exists "avatars_update_own" on storage.objects;
+create policy "avatars_update_own" on storage.objects
+  for update using (bucket_id = 'avatars' and public.storage_owner_id(name) = auth.uid());
+drop policy if exists "avatars_delete_own" on storage.objects;
+create policy "avatars_delete_own" on storage.objects
+  for delete using (bucket_id = 'avatars' and public.storage_owner_id(name) = auth.uid());
+
+-- presence: owned by the couple (path is {coupleId}/...).
+drop policy if exists "presence_access_couple" on storage.objects;
+create policy "presence_access_couple" on storage.objects
+  for all using (bucket_id = 'presence' and public.is_couple_member(public.storage_owner_id(name)))
+  with check (bucket_id = 'presence' and public.is_couple_member(public.storage_owner_id(name)));
+
+-- prompt-photos: same shape as presence.
+drop policy if exists "prompt_photos_access_couple" on storage.objects;
+create policy "prompt_photos_access_couple" on storage.objects
+  for all using (bucket_id = 'prompt-photos' and public.is_couple_member(public.storage_owner_id(name)))
+  with check (bucket_id = 'prompt-photos' and public.is_couple_member(public.storage_owner_id(name)));
+
+-- memory-photos: owned by the memory itself (path is {memoryId}/...).
+drop policy if exists "memory_photos_access" on storage.objects;
+create policy "memory_photos_access" on storage.objects
+  for all using (bucket_id = 'memory-photos' and public.can_access_memory(public.storage_owner_id(name)))
+  with check (bucket_id = 'memory-photos' and public.can_access_memory(public.storage_owner_id(name)));
