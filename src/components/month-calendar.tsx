@@ -11,15 +11,25 @@ import { getMonthGrid, getWeekDays } from '@/lib/mock/calendar';
 
 type DisplayMode = 'month' | 'week';
 
+function isSameDay(a: Date, b: Date) {
+  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+}
+
+function isSameMonth(a: Date, b: Date) {
+  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth();
+}
+
 // Mirrors CalendarSectionView in ../NoBounds/NoBounds/Features/Calendar: Month/Week toggle,
 // weekday header + grid or a horizontal week strip, legend, and a "+" button for New habit /
-// New important date (habit-form.tsx).
+// New important date (habit-form.tsx). Prev/next arrows page the viewed month or week; a
+// "Today" link jumps back when you've navigated away from the current one.
 export function MonthCalendar() {
   const theme = useTheme();
   const { session } = useSession();
   const today = new Date();
   const [mode, setMode] = useState<DisplayMode>('month');
-  const [selectedDate, setSelectedDate] = useState(today.getDate());
+  const [viewedDate, setViewedDate] = useState(today);
+  const [selectedDate, setSelectedDate] = useState(today);
   const [habits, setHabits] = useState<Habit[]>([]);
   const [completions, setCompletions] = useState<HabitCompletion[]>([]);
 
@@ -37,9 +47,29 @@ export function MonthCalendar() {
     loadHabits();
   }, [loadHabits]);
 
-  const { weeks, weekdayLabels, monthLabel } = getMonthGrid(today);
-  const weekDays = getWeekDays(today);
+  function goToToday() {
+    setViewedDate(today);
+    setSelectedDate(today);
+  }
+
+  function shiftMonth(delta: number) {
+    setViewedDate((prev) => new Date(prev.getFullYear(), prev.getMonth() + delta, 1));
+  }
+
+  function shiftWeek(delta: number) {
+    setViewedDate((prev) => {
+      const next = new Date(prev);
+      next.setDate(prev.getDate() + delta * 7);
+      return next;
+    });
+  }
+
+  const { weeks, weekdayLabels, monthLabel } = getMonthGrid(viewedDate);
+  const weekDays = getWeekDays(viewedDate);
+  const weekRangeLabel = `${weekDays[0].fullDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} – ${weekDays[6].fullDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`;
   const todaysDoneCount = completions.filter((c) => c.completed && c.user_id === session?.user.id).length;
+  const isViewingCurrentPeriod =
+    mode === 'month' ? isSameMonth(viewedDate, today) : weekDays.some((d) => isSameDay(d.fullDate, today));
 
   return (
     <View>
@@ -53,11 +83,25 @@ export function MonthCalendar() {
         ))}
       </View>
 
+      <View style={styles.navRow}>
+        <Pressable onPress={() => (mode === 'month' ? shiftMonth(-1) : shiftWeek(-1))} style={styles.navButton}>
+          <Ionicons name="chevron-back" size={18} color={theme.textPrimary} />
+        </Pressable>
+        <ThemedText type="smallBold">{mode === 'month' ? monthLabel : weekRangeLabel}</ThemedText>
+        <Pressable onPress={() => (mode === 'month' ? shiftMonth(1) : shiftWeek(1))} style={styles.navButton}>
+          <Ionicons name="chevron-forward" size={18} color={theme.textPrimary} />
+        </Pressable>
+      </View>
+      {!isViewingCurrentPeriod ? (
+        <Pressable onPress={goToToday}>
+          <ThemedText type="link" themeColor="accent" style={styles.todayLink}>
+            Today
+          </ThemedText>
+        </Pressable>
+      ) : null}
+
       {mode === 'month' ? (
         <>
-          <ThemedText type="smallBold" style={styles.monthLabel}>
-            {monthLabel}
-          </ThemedText>
           <View style={styles.weekRow}>
             {weekdayLabels.map((label) => (
               <ThemedText key={label} type="small" themeColor="textSecondary" style={styles.cell}>
@@ -68,7 +112,8 @@ export function MonthCalendar() {
           {weeks.map((week, weekIndex) => (
             <View key={weekIndex} style={styles.weekRow}>
               {week.map((day, dayIndex) => {
-                const isToday = day === today.getDate();
+                const dayDate = day ? new Date(viewedDate.getFullYear(), viewedDate.getMonth(), day) : null;
+                const isToday = dayDate ? isSameDay(dayDate, today) : false;
                 return (
                   <View
                     key={dayIndex}
@@ -90,10 +135,10 @@ export function MonthCalendar() {
         <>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.weekStrip}>
             {weekDays.map((day) => {
-              const isToday = day.date === today.getDate();
-              const isSelected = day.date === selectedDate;
+              const isToday = isSameDay(day.fullDate, today);
+              const isSelected = isSameDay(day.fullDate, selectedDate);
               return (
-                <Pressable key={day.date} onPress={() => setSelectedDate(day.date)}>
+                <Pressable key={day.fullDate.toISOString()} onPress={() => setSelectedDate(day.fullDate)}>
                   <View
                     style={[
                       styles.dayChip,
@@ -115,7 +160,7 @@ export function MonthCalendar() {
             })}
           </ScrollView>
           <ThemedText type="small" themeColor="textSecondary" style={styles.noHabitsText}>
-            {selectedDate === today.getDate() && habits.length > 0
+            {isSameDay(selectedDate, today) && habits.length > 0
               ? `${habits.length} habit${habits.length === 1 ? '' : 's'} for this day.`
               : 'No habits for this day.'}
           </ThemedText>
@@ -167,7 +212,9 @@ const styles = StyleSheet.create({
   segmented: { flexDirection: 'row', borderRadius: 12, padding: 4, marginBottom: 12 },
   segmentWrap: { flex: 1 },
   segment: { paddingVertical: 8, alignItems: 'center', borderRadius: 9 },
-  monthLabel: { marginBottom: 8 },
+  navRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 },
+  navButton: { padding: 6 },
+  todayLink: { marginBottom: 8 },
   weekRow: { flexDirection: 'row' },
   cell: { flex: 1, textAlign: 'center', paddingVertical: 6 },
   dayCell: { alignItems: 'center', justifyContent: 'center' },
