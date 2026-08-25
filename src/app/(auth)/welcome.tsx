@@ -22,6 +22,7 @@ export default function WelcomeScreen() {
   const [page, setPage] = useState(0);
   const listRef = useRef<FlatList>(null);
 
+  // tracks which onboarding page is centered, for the dot indicators
   function onScroll(e: NativeSyntheticEvent<NativeScrollEvent>) {
     const nextPage = Math.round(e.nativeEvent.contentOffset.x / width);
     setPage(nextPage);

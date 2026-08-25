@@ -41,12 +41,12 @@ export default function MemoryFormScreen() {
     setSaving(true);
     setError(null);
 
-    // The prototype's `memories` table only has a single photo_path column — the real app
-    // supports multiple photos per memory via a separate table, not wired up here yet.
+    // the prototype's `memories` table only has a single photo_path column — the real app
+    // supports multiple photos per memory via a separate table, not wired up here yet
     const caption = notes.trim().length > 0 ? `${title.trim()} — ${notes.trim()}` : title.trim();
 
-    // Insert first (no photo yet) so the memory's own ID exists to scope the upload path —
-    // memory-photos is a private bucket whose RLS ties each file to its owning memory's ID.
+    // insert first (no photo yet) so the memory's own id exists to scope the upload path —
+    // memory-photos is a private bucket whose rls ties each file to its owning memory's id
     const { data: inserted, error: insertError } = await supabase
       .from('memories')
       .insert({ couple_id: couple.id, caption })

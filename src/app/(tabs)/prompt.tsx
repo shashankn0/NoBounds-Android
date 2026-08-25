@@ -27,6 +27,7 @@ export default function PromptScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // fetches (or creates) today's prompt row, then loads the template text + both answers
   const load = useCallback(async () => {
     if (!couple) {
       setLoading(false);
@@ -95,6 +96,7 @@ export default function PromptScreen() {
 
   const myAnswer = answers.find((a) => a.user_id === session?.user.id);
   const partnerAnswer = answers.find((a) => a.user_id !== session?.user.id);
+  // only reveal once both partners have answered
   const revealed = answers.length >= 2;
 
   return (

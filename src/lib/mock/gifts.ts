@@ -5,6 +5,7 @@ export type GiftIdea = {
   starred: boolean;
 };
 
+// placeholder data — no backend table for this feature yet
 export const mockGiftIdeas: GiftIdea[] = [
   { id: 'gi-1', title: 'That book she mentioned last week', recipient: 'partner', starred: true },
   { id: 'gi-2', title: 'Handwritten letter for our anniversary', recipient: 'partner', starred: false },

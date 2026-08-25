@@ -22,6 +22,7 @@ export default function ProfileScreen() {
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // saves straight to the profiles row — no local-only draft state
   async function onSaveName() {
     if (!session || name.trim().length === 0) return;
     setSaving(true);
@@ -51,6 +52,7 @@ export default function ProfileScreen() {
           <View style={[styles.avatar, { backgroundColor: theme.accentMuted }]}>
             <Ionicons name="person" size={44} color={theme.textOnAccent} />
           </View>
+          {/* not wired up yet — avatars bucket exists but has no upload flow */}
           <Pressable>
             <ThemedText type="link" themeColor="accent">
               Change photo

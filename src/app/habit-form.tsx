@@ -39,7 +39,7 @@ export default function HabitFormScreen() {
     if (title.trim().length === 0) return;
 
     if (page === 'important_date') {
-      // Important dates aren't wired to a backend yet in this prototype — just dismiss.
+      // important dates aren't wired to a backend yet in this prototype — just dismiss
       router.back();
       return;
     }

@@ -17,6 +17,7 @@ import { mockPet, petMoodEmoji } from '@/lib/mock/pet';
 
 type Board = (null | 'X' | 'O')[];
 
+// fully local, no backend — real multiplayer would need a shared game-state table
 function TicTacToe() {
   const theme = useTheme();
   const [board, setBoard] = useState<Board>(Array(9).fill(null));
@@ -82,6 +83,7 @@ export default function PlayScreen() {
   const { couple } = useSession();
   const [activeGame, setActiveGame] = useState<(typeof mockGames)[number]['id'] | null>(null);
 
+  // simple in-screen router: showing a game swaps the whole body, no nested navigation
   if (activeGame) {
     return (
       <ThemedView style={{ flex: 1 }}>

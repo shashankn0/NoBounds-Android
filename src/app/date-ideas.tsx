@@ -6,6 +6,7 @@ import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
 import { mockDateIdeas } from '@/lib/mock/date-ideas';
 
+// static mock list, no backend yet
 export default function DateIdeasScreen() {
   return (
     <ThemedView style={styles.container}>

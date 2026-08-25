@@ -17,7 +17,7 @@ import { getSignedUrls } from '@/lib/storage';
 import { supabase } from '@/lib/supabase';
 import { fetchTimelineFeed, setTimelineFavorite, type TimelineFeedItem, type TimelineFilter } from '@/lib/timeline';
 
-// Matches TimelineFilter.chips in ../NoBounds/NoBounds/Core/Domain/Timeline/TimelineModels.swift
+// matches timelinefilter.chips in ../nobounds/nobounds/core/domain/timeline/timelinemodels.swift
 const FILTER_CHIPS: { id: TimelineFilter; label: string }[] = [
   { id: 'all', label: 'All' },
   { id: 'memory', label: 'Memories' },
@@ -45,8 +45,8 @@ export default function TimelineScreen() {
   const [search, setSearch] = useState('');
   const [activeFilter, setActiveFilter] = useState<TimelineFilter>('all');
 
-  // Mirrors iOS's enrichPhotoThumbnails: the feed itself only returns bare paths, so thumbnails
-  // are resolved to signed URLs in a second pass, keyed by the owning memory's id.
+  // mirrors ios's enrichphotothumbnails: the feed itself only returns bare paths, so thumbnails
+  // are resolved to signed urls in a second pass, keyed by the owning memory's id
   const loadThumbnails = useCallback(async (feedItems: TimelineFeedItem[]) => {
     const memoryIds = feedItems.filter((i) => i.item_type === 'memory').map((i) => i.entity_id);
     if (memoryIds.length === 0) {
@@ -87,14 +87,14 @@ export default function TimelineScreen() {
     }
   }, [couple, activeFilter, search, loadThumbnails]);
 
-  // Refetch whenever this tab regains focus, so a memory saved via memory-form shows up on return.
+  // refetch whenever this tab regains focus, so a memory saved via memory-form shows up on return
   useFocusEffect(
     useCallback(() => {
       load();
     }, [load])
   );
 
-  // Debounce search so we're not refetching on every keystroke.
+  // debounce search so we're not refetching on every keystroke
   useEffect(() => {
     const timeout = setTimeout(load, 300);
     return () => clearTimeout(timeout);

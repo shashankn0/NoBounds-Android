@@ -12,6 +12,7 @@ import { useSession } from '@/contexts/session-context';
 import { useTheme } from '@/hooks/use-theme';
 import { fetchHabits, fetchTodaysCompletions, toggleHabitToday, type Habit, type HabitCompletion } from '@/lib/habits';
 
+// full habit list + toggle — the timeline tab's calendar card is a smaller summary of this
 export default function CalendarScreen() {
   const theme = useTheme();
   const { session } = useSession();

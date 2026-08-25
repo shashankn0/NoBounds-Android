@@ -1,5 +1,7 @@
+// pure date math for the calendar card — no backend, just grid layout helpers
 const WEEKDAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
+// builds a full month grid, padded with nulls so every row is 7 cells
 export function getMonthGrid(date: Date) {
   const year = date.getFullYear();
   const month = date.getMonth();
@@ -20,6 +22,7 @@ export function getMonthGrid(date: Date) {
   return { weeks, weekdayLabels: WEEKDAY_LABELS, monthLabel: date.toLocaleDateString(undefined, { month: 'long', year: 'numeric' }) };
 }
 
+// sun-to-sat strip for the given date's week; fullDate avoids cross-month day-number clashes
 export function getWeekDays(date: Date) {
   const startOfWeek = new Date(date);
   startOfWeek.setDate(date.getDate() - date.getDay());

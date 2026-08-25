@@ -5,6 +5,7 @@ import Animated, { Keyframe, Easing } from 'react-native-reanimated';
 import classes from './animated-icon.module.css';
 const DURATION = 300;
 
+// web never shows the native splash screen, so this is a no-op
 export function AnimatedSplashOverlay() {
   return null;
 }

@@ -18,6 +18,7 @@ export default function PairingScreen() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
+  // one-time code, redeemed by the partner below
   async function onCreateInvite() {
     setError(null);
     setLoading(true);
@@ -30,6 +31,7 @@ export default function PairingScreen() {
     setInviteCode((data as { code: string }).code);
   }
 
+  // triggers the couple merge on the backend — solo data gets folded into the new couple
   async function onAcceptInvite() {
     setError(null);
     setLoading(true);

@@ -11,6 +11,7 @@ import { BottomTabInset } from '@/constants/theme';
 import { useSession } from '@/contexts/session-context';
 import { mockPresencePhotos } from '@/lib/mock/photos';
 
+// this is "Bound" in the ios app — presence photos are couple-only, no solo mode
 export default function PhotosScreen() {
   const insets = useSafeAreaInsets();
   const { couple } = useSession();

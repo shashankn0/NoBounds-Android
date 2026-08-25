@@ -16,6 +16,7 @@ export default function SignUpScreen() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
+  // supabase sends a confirmation email; session context picks up the session once verified
   async function onSubmit() {
     setError(null);
     setLoading(true);

@@ -6,6 +6,7 @@ import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
 import { mockNotifications } from '@/lib/mock/notifications';
 
+// sample data only — no push notifications wired up yet
 export default function NotificationsScreen() {
   return (
     <ThemedView style={styles.container}>

@@ -6,6 +6,7 @@ import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
 import { mockGiftIdeas } from '@/lib/mock/gifts';
 
+// static mock list, no backend yet
 export default function GiftsScreen() {
   return (
     <ThemedView style={styles.container}>

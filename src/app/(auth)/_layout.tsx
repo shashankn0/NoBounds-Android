@@ -1,5 +1,6 @@
 import { Stack } from 'expo-router';
 
+// sign in / sign up get a visible header, welcome doesn't
 export default function AuthLayout() {
   return (
     <Stack screenOptions={{ headerShown: false }}>

@@ -25,16 +25,18 @@ export default function HomeScreen() {
   const [habits, setHabits] = useState<Habit[]>([]);
   const [completions, setCompletions] = useState<HabitCompletion[]>([]);
 
+  // works solo pre-pairing and shows shared habits once merged
   const loadHabits = useCallback(async () => {
     try {
       const [habitRows, completionRows] = await Promise.all([fetchHabits(), fetchTodaysCompletions()]);
       setHabits(habitRows);
       setCompletions(completionRows);
     } catch {
-      // Home's habit card is a summary — Calendar shows the real error state.
+      // home's habit card is a summary — calendar shows the real error state
     }
   }, []);
 
+  // refetch every time the tab regains focus, not just on mount
   useFocusEffect(
     useCallback(() => {
       loadHabits();

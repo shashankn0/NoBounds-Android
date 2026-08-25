@@ -5,6 +5,7 @@ export type DateIdea = {
   starred: boolean;
 };
 
+// placeholder data — no backend table for this feature yet
 export const mockDateIdeas: DateIdea[] = [
   { id: 'di-1', title: 'Watch a movie together over a call', mode: 'virtual', starred: true },
   { id: 'di-2', title: 'Cook the same recipe at the same time', mode: 'virtual', starred: false },

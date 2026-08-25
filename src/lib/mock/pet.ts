@@ -6,6 +6,7 @@ export type Pet = {
   level: number;
 };
 
+// placeholder data — no shared couple-pet table yet
 export const mockPet: Pet = {
   id: 'pet-1',
   name: 'Mochi',

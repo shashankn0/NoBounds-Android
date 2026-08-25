@@ -7,9 +7,9 @@ export type MiniGame = {
   icon: keyof typeof Ionicons.glyphMap;
 };
 
-// Matches PlayGame enum in ../NoBounds/NoBounds/Features/Play/PlayGame.swift
-// (iOS icons: grid, character.book.closed, character.ja, pencil.and.scribble — Japanese and the
-// pencil glyph don't exist in Ionicons, so language-outline/brush-outline stand in.)
+// matches playgame enum in ../nobounds/nobounds/features/play/playgame.swift
+// (ios icons: grid, character.book.closed, character.ja, pencil.and.scribble — japanese and the
+// pencil glyph don't exist in ionicons, so language-outline/brush-outline stand in)
 export const mockGames: MiniGame[] = [
   { id: 'tic-tac-toe', title: 'Tic-Tac-Toe', subtitle: 'Classic 3×3', icon: 'grid-outline' },
   { id: 'spanish-flashcards', title: 'Spanish Flashcards', subtitle: '180 words & phrases', icon: 'book-outline' },

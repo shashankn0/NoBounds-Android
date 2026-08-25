@@ -5,6 +5,7 @@ import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
 import { mockWeeklyShare } from '@/lib/mock/weekly-share';
 
+// static mock data, no backend yet
 export default function WeeklyShareScreen() {
   return (
     <ThemedView style={styles.container}>

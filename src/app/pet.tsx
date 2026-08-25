@@ -5,6 +5,7 @@ import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
 import { mockPet, petMoodEmoji } from '@/lib/mock/pet';
 
+// static mock data, no backend — real version needs a shared couple pet table
 export default function PetScreen() {
   return (
     <ThemedView style={styles.container}>

@@ -1,3 +1,4 @@
+// placeholder data — no backend table for this feature yet
 export const mockCycle = {
   currentDay: 14,
   cycleLength: 28,

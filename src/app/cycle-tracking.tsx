@@ -5,6 +5,7 @@ import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
 import { mockCycle } from '@/lib/mock/cycle-tracking';
 
+// static mock data, no backend yet
 export default function CycleTrackingScreen() {
   return (
     <ThemedView style={styles.container}>

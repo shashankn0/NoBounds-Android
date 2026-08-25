@@ -70,6 +70,7 @@ export default function SettingsScreen() {
       </NBCard>
 
       <NBCard>
+        {/* clears the session, session-context routes back to (auth) automatically */}
         <NBSecondaryButton title="Sign out" onPress={signOut} />
       </NBCard>
       </ScrollView>

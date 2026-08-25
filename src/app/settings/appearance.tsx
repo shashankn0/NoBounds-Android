@@ -19,6 +19,7 @@ export default function AppearanceScreen() {
   const { session } = useSession();
   const { paletteId, setPaletteId, appearanceMode, setAppearanceMode, isDark } = usePalette();
 
+  // fire-and-forget save to user_app_settings — local state already updated optimistically
   function persist(next: { palette_id?: PaletteId; appearance_mode?: 'light' | 'dark' | 'system' }) {
     if (!session) return;
     supabase

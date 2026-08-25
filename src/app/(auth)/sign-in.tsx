@@ -16,6 +16,7 @@ export default function SignInScreen() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
+  // email/password only for now — google sign-in is a later phase
   async function onSubmit() {
     setError(null);
     setLoading(true);

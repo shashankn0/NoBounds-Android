@@ -57,6 +57,7 @@ const EXTENSIONS: ExtensionRow[] = [
   },
 ];
 
+// which home cards show by default — matches EXTENSIONS ids above
 const DEFAULT_ENABLED: Record<string, boolean> = {
   'date-ideas': false,
   gifts: false,
@@ -73,6 +74,7 @@ export default function ExtensionsScreen() {
   const [feedback, setFeedback] = useState('');
   const [sent, setSent] = useState(false);
 
+  // no backend behind this yet — just shows a thank-you locally
   function onSendFeedback() {
     if (feedback.trim().length === 0) return;
     setSent(true);
