@@ -3,6 +3,7 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from '
 
 import { supabase } from '@/lib/supabase';
 
+// mirrors public.profiles
 type Profile = {
   id: string;
   display_name: string;
@@ -11,10 +12,12 @@ type Profile = {
   created_at: string;
 };
 
+// just the id — null means not paired yet
 type Couple = {
   id: string;
 };
 
+// mirrors public.user_app_settings
 type AppSettings = {
   palette_id: string;
   appearance_mode: 'system' | 'light' | 'dark';
@@ -40,14 +43,17 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [couple, setCouple] = useState<Couple | null>(null);
   const [appSettings, setAppSettings] = useState<AppSettings | null>(null);
 
+  // loads profile, couple, and settings for whichever session is currently active
   async function loadForSession(nextSession: Session | null) {
     if (!nextSession) {
+      // signed out — clear everything
       setProfile(null);
       setCouple(null);
       setAppSettings(null);
       return;
     }
 
+    // creates the profile/settings rows on first sign-in, otherwise just fetches them
     const { data: profileRow } = await supabase.rpc('ensure_own_profile').single();
     setProfile((profileRow as Profile) ?? null);
 
@@ -64,12 +70,14 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }
 
   useEffect(() => {
+    // restore whatever session is already on the device
     supabase.auth.getSession().then(async ({ data }) => {
       setSession(data.session);
       await loadForSession(data.session);
       setIsLoading(false);
     });
 
+    // keep in sync with sign-in / sign-out / token refresh
     const { data: subscription } = supabase.auth.onAuthStateChange((_event, nextSession) => {
       setSession(nextSession);
       loadForSession(nextSession);
@@ -78,10 +86,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     return () => subscription.subscription.unsubscribe();
   }, []);
 
+  // call after pairing changes, so couple state updates without a full reload
   async function refreshCouple() {
     await loadForSession(session);
   }
 
+  // call after saving profile edits
   async function refreshProfile() {
     if (!session) return;
     const { data: profileRow } = await supabase

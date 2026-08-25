@@ -15,8 +15,8 @@ type FormHeaderProps = {
   rightDisabled?: boolean;
 };
 
-// Mirrors the modal-sheet nav bar used across CreateEntrySheet/CreateMemoryView/ExtensionsView:
-// a pill button on each side, bold centered title. Custom (not the native Stack header) so the
+// mirrors the modal-sheet nav bar used across createentrysheet/creatememoryview/extensionsview:
+// a pill button on each side, bold centered title. custom (not the native stack header) so the
 // pill styling matches exactly.
 export function FormHeader({
   title,

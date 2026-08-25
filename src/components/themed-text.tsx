@@ -9,6 +9,7 @@ export type ThemedTextProps = TextProps & {
   themeColor?: keyof PaletteColors;
 };
 
+// text that auto-colors/sizes itself from the active palette — use instead of raw <Text>
 export function ThemedText({ style, type = 'default', themeColor, ...rest }: ThemedTextProps) {
   const theme = useTheme();
 

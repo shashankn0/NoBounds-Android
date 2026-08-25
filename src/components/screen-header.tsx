@@ -10,9 +10,9 @@ type ScreenHeaderProps = {
   centerLabel?: string;
 };
 
-// Mirrors the toolbar every tab gets in MainTabView.swift: NotificationToolbarButton (bell, top-left)
-// + ProfileToolbarButton (avatar, top-right), with an optional centered "paired with" label.
-// Pinned like iOS's nav bar (doesn't scroll away) — padded by the safe-area inset so it clears the
+// mirrors the toolbar every tab gets in maintabview.swift: notificationtoolbarbutton (bell, top-left)
+// + profiletoolbarbutton (avatar, top-right), with an optional centered "paired with" label.
+// pinned like ios's nav bar (doesn't scroll away) — padded by the safe-area inset so it clears the
 // status bar instead of being clipped by it.
 export function ScreenHeader({ centerLabel }: ScreenHeaderProps) {
   const theme = useTheme();

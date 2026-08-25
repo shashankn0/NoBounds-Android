@@ -7,6 +7,7 @@ import { useColorScheme as useRNColorScheme } from 'react-native';
 export function useColorScheme() {
   const [hasHydrated, setHasHydrated] = useState(false);
 
+  // flips true after the first client render, once we can trust the real value
   useEffect(() => {
     setHasHydrated(true);
   }, []);
@@ -17,5 +18,5 @@ export function useColorScheme() {
     return colorScheme;
   }
 
-  return 'light';
+  return 'light'; // safe guess for the server-rendered pass
 }

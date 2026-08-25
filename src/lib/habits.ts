@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase';
 
+// a habit — solo (couple_id null) until pairing merges it into the couple
 export type Habit = {
   id: string;
   couple_id: string | null;
@@ -10,6 +11,7 @@ export type Habit = {
   created_at: string;
 };
 
+// one user's check-in for one habit on one day
 export type HabitCompletion = {
   habit_id: string;
   user_id: string;
@@ -19,6 +21,7 @@ export type HabitCompletion = {
 
 const HABIT_COLUMNS = 'id, couple_id, owner_user_id, title, owner_scope, sort_order, created_at';
 
+// all of the caller's habits, solo + shared (rls filters the rest)
 export async function fetchHabits(): Promise<Habit[]> {
   const { data, error } = await supabase
     .from('habits')
@@ -29,6 +32,7 @@ export async function fetchHabits(): Promise<Habit[]> {
   return (data as Habit[]) ?? [];
 }
 
+// who's checked off what, for today only
 export async function fetchTodaysCompletions(): Promise<HabitCompletion[]> {
   const today = new Date().toISOString().slice(0, 10);
   const { data, error } = await supabase
@@ -42,6 +46,7 @@ export async function fetchTodaysCompletions(): Promise<HabitCompletion[]> {
 export type HabitOwnerScope = 'mine' | 'yours' | 'ours';
 export type HabitCompletionPolicy = 'either' | 'both';
 
+// creates a habit, solo or shared depending on whether the caller is paired
 export async function createHabit(
   title: string,
   coupleId: string | null,
@@ -62,6 +67,7 @@ export async function createHabit(
   if (error) throw error;
 }
 
+// flips today's completion for the caller — upsert so re-toggling just overwrites
 export async function toggleHabitToday(habitId: string, completed: boolean): Promise<void> {
   const { data: userData } = await supabase.auth.getUser();
   const userId = userData.user?.id;

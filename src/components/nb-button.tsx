@@ -9,7 +9,7 @@ type NBButtonProps = {
   disabled?: boolean;
 };
 
-// Mirrors NBPrimaryButton.swift: accent fill, 12pt radius, semibold label.
+// mirrors nbprimarybutton.swift: accent fill, 12pt radius, semibold label. use for the main action.
 export function NBPrimaryButton({ title, onPress, disabled }: NBButtonProps) {
   const theme = useTheme();
 
@@ -28,7 +28,7 @@ export function NBPrimaryButton({ title, onPress, disabled }: NBButtonProps) {
   );
 }
 
-// Mirrors NBSecondaryButton.swift: surface fill, accent-colored 1.5pt border.
+// mirrors nbsecondarybutton.swift: surface fill, accent-colored 1.5pt border. use for lesser actions.
 export function NBSecondaryButton({ title, onPress, disabled }: NBButtonProps) {
   const theme = useTheme();
 

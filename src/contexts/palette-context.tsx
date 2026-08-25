@@ -16,11 +16,13 @@ type PaletteContextValue = {
 
 const PaletteContext = createContext<PaletteContextValue | undefined>(undefined);
 
+// local-only state — _layout.tsx hydrates it from the account's saved settings once loaded
 export function PaletteProvider({ children }: { children: ReactNode }) {
   const [paletteId, setPaletteId] = useState<PaletteId>(DefaultPaletteId);
   const [appearanceMode, setAppearanceMode] = useState<AppearanceMode>('system');
   const systemScheme = useColorScheme();
 
+  // "system" mode follows the device's own light/dark setting
   const isDark =
     appearanceMode === 'dark' ||
     (appearanceMode === 'system' && systemScheme === 'dark');

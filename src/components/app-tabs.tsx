@@ -9,8 +9,8 @@ import { useTheme } from '@/hooks/use-theme';
 
 type IconName = keyof typeof Ionicons.glyphMap;
 
-// Matches MainTab order + SF Symbols in ../NoBounds/NoBounds/Core/Navigation: home, prompt, photos, play, timeline.
-// iOS always renders the filled glyph (selection is shown via the circular badge + color, not
+// matches maintab order + sf symbols in ../nobounds/nobounds/core/navigation: home, prompt, photos, play, timeline.
+// ios always renders the filled glyph (selection is shown via the circular badge + color, not
 // an outline/filled swap), so there's a single icon per tab here.
 const TABS: { name: string; href: Href; label: string; icon: IconName }[] = [
   { name: 'home', href: '/', label: 'Home', icon: 'home' },
@@ -20,6 +20,7 @@ const TABS: { name: string; href: Href; label: string; icon: IconName }[] = [
   { name: 'timeline', href: '/timeline', label: 'Timeline', icon: 'time' },
 ];
 
+// floating pill tab bar, rendered on top of whichever tab screen is active
 export default function AppTabs() {
   return (
     <Tabs>
@@ -46,6 +47,7 @@ function TabButton({
   const theme = useTheme();
   const labelColor = isFocused ? theme.tabBarItemSelected : theme.tabBarItemUnselected;
 
+  // one tab's icon + label, circle badge shows only when selected
   return (
     <Pressable {...props} style={styles.tabButton}>
       <View style={[styles.badge, { backgroundColor: isFocused ? theme.accentMuted : 'transparent' }]}>
@@ -89,7 +91,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    // Larger than any plausible half-height so the bar always renders as a true rounded
+    // larger than any plausible half-height so the bar always renders as a true rounded
     // capsule (matches the pill buttons/search bar elsewhere), regardless of content height.
     borderRadius: 999,
     borderWidth: 1,
@@ -110,7 +112,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: 999,
-    // Android-only quirk: a View's backgroundColor going from absent to present on an
+    // android-only quirk: a view's backgroundColor going from absent to present on an
     // already-mounted node can render square instead of picking up borderRadius on that
     // update — see the isFocused ? accentMuted : 'transparent' below (always-present value,
     // never an added/removed key) which is the real fix. overflow:'hidden' is belt-and-suspenders.

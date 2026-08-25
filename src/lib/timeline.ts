@@ -4,6 +4,7 @@ export type TimelineItemType = 'memory' | 'photo' | 'prompt' | 'milestone';
 
 export type TimelineFilter = 'all' | TimelineItemType | 'favorites';
 
+// one row from the unified timeline_feed() rpc
 export type TimelineFeedItem = {
   item_type: TimelineItemType;
   item_id: string;
@@ -17,13 +18,14 @@ export type TimelineFeedItem = {
 
 const PAGE_SIZE = 20;
 
-// Mirrors iOS's TimelineViewModel.loadPage: filter -> RPC params, milestone-exclusion handled
+// mirrors ios's timelineviewmodel.loadpage: filter -> rpc params, milestone-exclusion handled
 // server-side (see timeline_feed() in supabase/schema.sql).
 export async function fetchTimelineFeed(options: {
   filter: TimelineFilter;
   search?: string;
   before?: { occurredAt: string; itemId: string };
 }): Promise<TimelineFeedItem[]> {
+  // "all" and "favorites" both mean "don't filter by type"
   const itemTypes = options.filter === 'all' || options.filter === 'favorites' ? null : [options.filter];
   const favoritesOnly = options.filter === 'favorites';
   const search = options.search?.trim();
@@ -41,6 +43,7 @@ export async function fetchTimelineFeed(options: {
   return (data as TimelineFeedItem[] | null) ?? [];
 }
 
+// stars/unstars any item type — one generic table backs all four
 export async function setTimelineFavorite(
   entityType: TimelineItemType,
   entityId: string,

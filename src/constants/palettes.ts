@@ -25,7 +25,8 @@ export type Palette = {
   dark: PaletteColors;
 };
 
-// Exact token values ported from ../NoBounds/NoBounds/Core/Theme/Palettes/*Tokens.swift
+// exact token values ported from ../nobounds/nobounds/core/theme/palettes/*tokens.swift.
+// each entry below is one full palette, light + dark.
 export const Palettes: Record<PaletteId, Palette> = {
   classic_rose: {
     id: 'classic_rose',

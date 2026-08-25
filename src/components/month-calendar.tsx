@@ -11,25 +11,27 @@ import { getMonthGrid, getWeekDays } from '@/lib/mock/calendar';
 
 type DisplayMode = 'month' | 'week';
 
+// same calendar day, ignoring time
 function isSameDay(a: Date, b: Date) {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 }
 
+// same calendar month
 function isSameMonth(a: Date, b: Date) {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth();
 }
 
-// Mirrors CalendarSectionView in ../NoBounds/NoBounds/Features/Calendar: Month/Week toggle,
-// weekday header + grid or a horizontal week strip, legend, and a "+" button for New habit /
-// New important date (habit-form.tsx). Prev/next arrows page the viewed month or week; a
-// "Today" link jumps back when you've navigated away from the current one.
+// mirrors calendarsectionview in ../nobounds/nobounds/features/calendar: month/week toggle,
+// weekday header + grid or a horizontal week strip, legend, and a "+" button for new habit /
+// new important date (habit-form.tsx). prev/next arrows page the viewed month or week; a
+// "today" link jumps back when you've navigated away from the current one.
 export function MonthCalendar() {
   const theme = useTheme();
   const { session } = useSession();
   const today = new Date();
   const [mode, setMode] = useState<DisplayMode>('month');
-  const [viewedDate, setViewedDate] = useState(today);
-  const [selectedDate, setSelectedDate] = useState(today);
+  const [viewedDate, setViewedDate] = useState(today); // month/week currently on screen
+  const [selectedDate, setSelectedDate] = useState(today); // tapped day, week view only
   const [habits, setHabits] = useState<Habit[]>([]);
   const [completions, setCompletions] = useState<HabitCompletion[]>([]);
 
@@ -39,7 +41,7 @@ export function MonthCalendar() {
       setHabits(habitRows);
       setCompletions(completionRows);
     } catch {
-      // The calendar card is a summary — Calendar's own screen shows the real error state.
+      // the calendar card is a summary — calendar's own screen shows the real error state.
     }
   }, []);
 
@@ -47,6 +49,7 @@ export function MonthCalendar() {
     loadHabits();
   }, [loadHabits]);
 
+  // jump both viewed + selected date back to today
   function goToToday() {
     setViewedDate(today);
     setSelectedDate(today);
@@ -101,6 +104,7 @@ export function MonthCalendar() {
       ) : null}
 
       {mode === 'month' ? (
+        // full grid: weekday header row + one row per week
         <>
           <View style={styles.weekRow}>
             {weekdayLabels.map((label) => (
@@ -132,6 +136,7 @@ export function MonthCalendar() {
           ))}
         </>
       ) : (
+        // scrollable strip of day chips, tap one to select it
         <>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.weekStrip}>
             {weekDays.map((day) => {

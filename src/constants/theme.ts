@@ -1,31 +1,8 @@
-/**
- * Below are the colors that are used in the app. The colors are defined in the light and dark mode.
- * There are many other ways to style your app. For example, [Nativewind](https://www.nativewind.dev/), [Tamagui](https://tamagui.dev/), [unistyles](https://reactnativeunistyles.vercel.app), etc.
- */
-
 import '@/global.css';
 
 import { Platform } from 'react-native';
 
-export const Colors = {
-  light: {
-    text: '#000000',
-    background: '#ffffff',
-    backgroundElement: '#F0F0F3',
-    backgroundSelected: '#E0E1E6',
-    textSecondary: '#60646C',
-  },
-  dark: {
-    text: '#ffffff',
-    background: '#000000',
-    backgroundElement: '#212225',
-    backgroundSelected: '#2E3135',
-    textSecondary: '#B0B4BA',
-  },
-} as const;
-
-export type ThemeColor = keyof typeof Colors.light & keyof typeof Colors.dark;
-
+// per-platform font stacks — palette colors live in constants/palettes.ts instead
 export const Fonts = Platform.select({
   ios: {
     /** iOS `UIFontDescriptorSystemDesignDefault` */
@@ -51,6 +28,7 @@ export const Fonts = Platform.select({
   },
 });
 
+// shared spacing scale, in px
 export const Spacing = {
   half: 2,
   one: 4,
@@ -61,9 +39,9 @@ export const Spacing = {
   six: 64,
 } as const;
 
-// Clearance scroll content needs above the floating tab bar (see app-tabs.tsx), on top of
-// the safe-area bottom inset each screen already adds separately. Sized with headroom above
+// clearance scroll content needs above the floating tab bar (see app-tabs.tsx), on top of
+// the safe-area bottom inset each screen already adds separately. sized with headroom above
 // the bar's own computed height (~74px content + 8px top pad, plus its own safe-area padding)
 // so content doesn't get clipped on devices that report a small/zero bottom inset.
 export const BottomTabInset = Platform.select({ ios: 50, android: 100 }) ?? 0;
-export const MaxContentWidth = 800;
+export const MaxContentWidth = 800; // caps content width on web/tablet

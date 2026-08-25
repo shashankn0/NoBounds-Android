@@ -4,7 +4,8 @@ import { useTheme } from '@/hooks/use-theme';
 
 type NBCardProps = ViewProps & { elevated?: boolean };
 
-// Mirrors ../NoBounds/NoBounds/Core/UI/NBCard.swift: 16pt padding, 16pt radius, hairline border, soft shadow.
+// mirrors ../nobounds/nobounds/core/ui/nbcard.swift: 16pt padding, 16pt radius, hairline border, soft shadow.
+// the standard card shell used across almost every screen.
 export function NBCard({ style, elevated = false, ...rest }: NBCardProps) {
   const theme = useTheme();
 

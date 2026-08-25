@@ -9,6 +9,7 @@ export type ThemedViewProps = ViewProps & {
   type?: keyof PaletteColors;
 };
 
+// view that auto-fills its background from the active palette — use instead of raw <View> for screens
 export function ThemedView({ style, lightColor, darkColor, type, ...otherProps }: ThemedViewProps) {
   const theme = useTheme();
 

@@ -12,9 +12,9 @@ SplashScreen.preventAutoHideAsync();
 function RootNavigator() {
   const { isLoading, session, appSettings } = useSession();
   const { isDark, colors, setPaletteId, setAppearanceMode } = usePalette();
-  const hasHydratedPalette = useRef(false);
+  const hasHydratedPalette = useRef(false); // only pull the saved theme once per session
 
-  // Pull the user's saved palette/appearance mode down from Supabase once per session, so a
+  // pull the user's saved palette/appearance mode down from supabase once per session, so a
   // local device switch doesn't get clobbered on every re-render.
   useEffect(() => {
     if (!appSettings || hasHydratedPalette.current) return;
@@ -25,12 +25,14 @@ function RootNavigator() {
     setAppearanceMode(appSettings.appearance_mode);
   }, [appSettings, setPaletteId, setAppearanceMode]);
 
+  // reset the hydration flag on sign-out, so the next sign-in re-hydrates
   useEffect(() => {
     if (!session) {
       hasHydratedPalette.current = false;
     }
   }, [session]);
 
+  // maps our palette tokens onto expo-router's nav theme (header/tab bar chrome)
   const navTheme = useMemo<Theme>(() => {
     const base = isDark ? DarkTheme : DefaultTheme;
     return {
@@ -53,15 +55,17 @@ function RootNavigator() {
   }, [isLoading]);
 
   if (isLoading) {
-    return null;
+    return null; // splash stays up until session/theme are ready
   }
 
   return (
     <ThemeProvider value={navTheme}>
       <Stack screenOptions={{ headerShown: false }}>
+        {/* signed out -> onboarding/auth only */}
         <Stack.Protected guard={!session}>
           <Stack.Screen name="(auth)" />
         </Stack.Protected>
+        {/* signed in -> main tabs + every modal/detail screen */}
         <Stack.Protected guard={!!session}>
           <Stack.Screen name="(tabs)" />
           <Stack.Screen name="pairing" options={{ presentation: 'modal', headerShown: true, title: 'Pairing' }} />

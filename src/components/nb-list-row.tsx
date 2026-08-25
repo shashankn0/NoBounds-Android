@@ -11,8 +11,8 @@ type NBListRowProps = {
   trailing?: string;
 };
 
-// Mirrors the nav-row pattern used throughout ProfileView.swift / SettingsPlaceholderView.swift:
-// leading accent icon, title, trailing chevron.
+// mirrors the nav-row pattern used throughout profileview.swift / settingsplaceholderview.swift:
+// leading accent icon, title, trailing chevron. tap to navigate.
 export function NBListRow({ icon, title, onPress, trailing }: NBListRowProps) {
   const theme = useTheme();
 
