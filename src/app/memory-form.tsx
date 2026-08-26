@@ -10,7 +10,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { useSession } from '@/contexts/session-context';
 import { useTheme } from '@/hooks/use-theme';
-import { supabase } from '@/lib/supabase';
+import { errorMessage, supabase } from '@/lib/supabase';
 import { uploadPrivate } from '@/lib/storage';
 
 const MAX_PHOTOS = 10;
@@ -18,7 +18,8 @@ const MAX_PHOTOS = 10;
 export default function MemoryFormScreen() {
   const theme = useTheme();
   const { couple } = useSession();
-  const [photoUris, setPhotoUris] = useState<string[]>([]);
+  // keeps the full picked asset (not just the uri) so the real mime type survives to upload time
+  const [photos, setPhotos] = useState<ImagePicker.ImagePickerAsset[]>([]);
   const [title, setTitle] = useState('');
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
@@ -32,7 +33,7 @@ export default function MemoryFormScreen() {
       selectionLimit: MAX_PHOTOS,
     });
     if (!result.canceled) {
-      setPhotoUris(result.assets.map((a) => a.uri).slice(0, MAX_PHOTOS));
+      setPhotos(result.assets.slice(0, MAX_PHOTOS));
     }
   }
 
@@ -59,17 +60,18 @@ export default function MemoryFormScreen() {
       return;
     }
 
-    const firstUri = photoUris[0];
-    if (firstUri) {
-      const response = await fetch(firstUri);
-      const blob = await response.blob();
-      const path = `${inserted.id}/${Date.now()}.jpg`;
+    const firstPhoto = photos[0];
+    if (firstPhoto) {
+      // use the picked file's real mime type — not every photo is a jpeg
+      const mimeType = firstPhoto.mimeType ?? 'image/jpeg';
+      const extension = mimeType.split('/')[1] ?? 'jpg';
+      const path = `${inserted.id}/${Date.now()}.${extension}`;
       try {
-        await uploadPrivate('memory-photos', path, blob, 'image/jpeg');
+        await uploadPrivate('memory-photos', path, firstPhoto.uri, mimeType);
         await supabase.from('memories').update({ photo_path: path }).eq('id', inserted.id);
       } catch (err) {
         setSaving(false);
-        setError(err instanceof Error ? err.message : 'Memory saved, but the photo failed to upload');
+        setError(errorMessage(err, 'Memory saved, but the photo failed to upload'));
         return;
       }
     }
@@ -94,7 +96,7 @@ export default function MemoryFormScreen() {
           Add photos to your memory
         </ThemedText>
 
-        {photoUris.length === 0 ? (
+        {photos.length === 0 ? (
           <View style={[styles.dropZone, { borderColor: theme.border }]}>
             <Ionicons name="images-outline" size={32} color={theme.textSecondary} />
             <ThemedText type="small" themeColor="textSecondary" style={styles.dropZoneText}>
@@ -103,8 +105,8 @@ export default function MemoryFormScreen() {
           </View>
         ) : (
           <View style={styles.previewGrid}>
-            {photoUris.map((uri) => (
-              <Image key={uri} source={{ uri }} style={styles.previewThumb} />
+            {photos.map((asset) => (
+              <Image key={asset.uri} source={{ uri: asset.uri }} style={styles.previewThumb} />
             ))}
           </View>
         )}
@@ -118,7 +120,7 @@ export default function MemoryFormScreen() {
           </ThemedText>
         </Pressable>
         <ThemedText type="small" themeColor="textSecondary">
-          {photoUris.length}/{MAX_PHOTOS} photos
+          {photos.length}/{MAX_PHOTOS} photos
         </ThemedText>
 
         <NBCard>

@@ -1,10 +1,16 @@
+import { File } from 'expo-file-system';
+
 import { supabase } from '@/lib/supabase';
 
 const SIGNED_URL_TTL_SECONDS = 3600; // links expire after 1 hour
 
-// uploads to a private bucket — path must match that bucket's rls ownership rule
-export async function uploadPrivate(bucket: string, path: string, blob: Blob, contentType: string): Promise<void> {
-  const { error } = await supabase.storage.from(bucket).upload(path, blob, { contentType });
+// uploads to a private bucket — path must match that bucket's rls ownership rule.
+// reads the local file straight into an arraybuffer via expo-file-system, rather than
+// fetch(uri).blob() — react native's Blob polyfill round-trips the bytes through base64
+// and its own native store, which is slow and also loses the real mime type along the way.
+export async function uploadPrivate(bucket: string, path: string, uri: string, contentType: string): Promise<void> {
+  const arrayBuffer = await new File(uri).arrayBuffer();
+  const { error } = await supabase.storage.from(bucket).upload(path, arrayBuffer, { contentType });
   if (error) throw error;
 }
 

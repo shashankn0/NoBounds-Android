@@ -707,3 +707,14 @@ drop policy if exists "memory_photos_access" on storage.objects;
 create policy "memory_photos_access" on storage.objects
   for all using (bucket_id = 'memory-photos' and public.can_access_memory(public.storage_owner_id(name)))
   with check (bucket_id = 'memory-photos' and public.can_access_memory(public.storage_owner_id(name)));
+
+-- ============ grants ============
+-- rls policies only decide which rows a role can touch — the role also needs the underlying
+-- table/column grant, or postgres rejects the query before rls even runs ("permission denied
+-- for table x"). this makes sure every table above is fully readable/writable by authenticated
+-- (rls still does the real row-level restricting), and covers any table added later too.
+grant usage on schema public to authenticated;
+grant select, insert, update, delete on all tables in schema public to authenticated;
+grant execute on all functions in schema public to authenticated;
+alter default privileges in schema public grant select, insert, update, delete on tables to authenticated;
+alter default privileges in schema public grant execute on functions to authenticated;

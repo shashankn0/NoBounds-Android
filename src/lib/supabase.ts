@@ -27,3 +27,13 @@ export const supabase = createClient(
     },
   }
 );
+
+// postgrest/storage errors are plain objects, not Error instances, so `instanceof Error`
+// misses them and silently falls back to a generic message — this covers both shapes
+export function errorMessage(err: unknown, fallback: string): string {
+  if (err instanceof Error) return err.message;
+  if (err && typeof err === 'object' && 'message' in err && typeof err.message === 'string') {
+    return err.message;
+  }
+  return fallback;
+}
