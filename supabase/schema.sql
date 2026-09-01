@@ -92,6 +92,33 @@ create table if not exists public.couple_invites (
   expires_at timestamptz not null default (now() + interval '7 days')
 );
 
+-- 'superseded' added to match ios: generating a new code retires the old one rather than
+-- leaving both valid. re-adding the check constraint since create table if not exists won't
+-- widen it on a database that already has this table.
+alter table public.couple_invites drop constraint if exists couple_invites_status_check;
+alter table public.couple_invites add constraint couple_invites_status_check
+  check (status in ('pending', 'accepted', 'expired', 'superseded'));
+
+-- one-time cleanup: testing before this constraint existed left some people with more than
+-- one pending invite. keep only the newest pending row per person, retire the rest, so the
+-- unique index below can actually be built. harmless to re-run — once there's only one
+-- pending row per person left, this updates nothing.
+update public.couple_invites ci
+set status = 'superseded'
+where ci.status = 'pending'
+  and ci.id <> (
+    select ci2.id from public.couple_invites ci2
+    where ci2.created_by = ci.created_by and ci2.status = 'pending'
+    order by ci2.created_at desc
+    limit 1
+  );
+
+-- mirrors ios's partial unique index: only one pending invite per person at a time. this is
+-- the hard backstop — create_couple_invite() also explicitly supersedes the old one below, but
+-- this catches the rare case of two concurrent calls racing each other.
+create unique index if not exists couple_invites_one_pending_per_inviter
+  on public.couple_invites (created_by) where status = 'pending';
+
 alter table public.couples enable row level security;
 alter table public.couple_members enable row level security;
 alter table public.couple_invites enable row level security;
@@ -142,6 +169,12 @@ begin
   if exists (select 1 from public.couple_members where user_id = auth.uid()) then
     raise exception 'already_paired';
   end if;
+
+  -- retire any still-pending invite from this user first — mirrors ios: only one active
+  -- code at a time, so generating a new one always replaces the old one, never adds to it.
+  update public.couple_invites
+  set status = 'superseded'
+  where created_by = auth.uid() and status = 'pending';
 
   new_code := upper(substr(md5(random()::text), 1, 6));
 

@@ -1,5 +1,6 @@
+import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import { FlatList, StyleSheet, View } from 'react-native';
+import { FlatList, Pressable, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { NBCard } from '@/components/nb-card';
@@ -9,10 +10,12 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { BottomTabInset } from '@/constants/theme';
 import { useSession } from '@/contexts/session-context';
+import { useTheme } from '@/hooks/use-theme';
 import { mockPresencePhotos } from '@/lib/mock/photos';
 
 // this is "Bound" in the ios app — presence photos are couple-only, no solo mode
 export default function PhotosScreen() {
+  const theme = useTheme();
   const insets = useSafeAreaInsets();
   const { couple } = useSession();
 
@@ -61,6 +64,12 @@ export default function PhotosScreen() {
           </NBCard>
         )}
       />
+
+      <Pressable
+        onPress={() => router.push('/bound-camera')}
+        style={[styles.cameraButton, { bottom: insets.bottom + BottomTabInset, backgroundColor: theme.accent }]}>
+        <Ionicons name="camera" size={24} color={theme.textOnAccent} />
+      </Pressable>
     </ThemedView>
   );
 }
@@ -73,4 +82,18 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   thumb: { width: 56, height: 56, borderRadius: 12, backgroundColor: 'rgba(120,120,120,0.25)' },
   rowText: { flex: 1, gap: 2 },
+  cameraButton: {
+    position: 'absolute',
+    right: 20,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000000',
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 4,
+  },
 });

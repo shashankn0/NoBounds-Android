@@ -82,6 +82,7 @@ function RootNavigator() {
           <Stack.Screen name="habit-form" options={{ presentation: 'modal' }} />
           <Stack.Screen name="memory-form" options={{ presentation: 'modal' }} />
           <Stack.Screen name="extensions" options={{ presentation: 'modal' }} />
+          <Stack.Screen name="bound-camera" options={{ presentation: 'fullScreenModal' }} />
         </Stack.Protected>
       </Stack>
     </ThemeProvider>
