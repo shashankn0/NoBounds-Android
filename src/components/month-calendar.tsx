@@ -6,7 +6,9 @@ import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { ThemedText } from '@/components/themed-text';
 import { useSession } from '@/contexts/session-context';
 import { useTheme } from '@/hooks/use-theme';
+import type { ImportantDate } from '@/lib/database-types';
 import { fetchHabits, fetchTodaysCompletions, type Habit, type HabitCompletion } from '@/lib/habits';
+import { fetchImportantDates } from '@/lib/important-dates';
 import { getMonthGrid, getWeekDays } from '@/lib/mock/calendar';
 
 type DisplayMode = 'month' | 'week';
@@ -34,12 +36,18 @@ export function MonthCalendar() {
   const [selectedDate, setSelectedDate] = useState(today); // tapped day, week view only
   const [habits, setHabits] = useState<Habit[]>([]);
   const [completions, setCompletions] = useState<HabitCompletion[]>([]);
+  const [importantDates, setImportantDates] = useState<ImportantDate[]>([]);
 
   const loadHabits = useCallback(async () => {
     try {
-      const [habitRows, completionRows] = await Promise.all([fetchHabits(), fetchTodaysCompletions()]);
+      const [habitRows, completionRows, dateRows] = await Promise.all([
+        fetchHabits(),
+        fetchTodaysCompletions(),
+        fetchImportantDates(),
+      ]);
       setHabits(habitRows);
       setCompletions(completionRows);
+      setImportantDates(dateRows);
     } catch {
       // the calendar card is a summary — calendar's own screen shows the real error state.
     }
@@ -48,6 +56,17 @@ export function MonthCalendar() {
   useEffect(() => {
     loadHabits();
   }, [loadHabits]);
+
+  // matches on month+day for yearly-repeating dates, exact date otherwise
+  function hasImportantDate(day: Date) {
+    return importantDates.some((d) => {
+      const eventDate = new Date(`${d.event_date}T00:00:00`);
+      if (d.repeats_yearly) {
+        return eventDate.getMonth() === day.getMonth() && eventDate.getDate() === day.getDate();
+      }
+      return isSameDay(eventDate, day);
+    });
+  }
 
   // jump both viewed + selected date back to today
   function goToToday() {
@@ -118,6 +137,7 @@ export function MonthCalendar() {
               {week.map((day, dayIndex) => {
                 const dayDate = day ? new Date(viewedDate.getFullYear(), viewedDate.getMonth(), day) : null;
                 const isToday = dayDate ? isSameDay(dayDate, today) : false;
+                const dayHasImportantDate = dayDate ? hasImportantDate(dayDate) : false;
                 return (
                   <View
                     key={dayIndex}
@@ -129,6 +149,9 @@ export function MonthCalendar() {
                     <ThemedText type="small" style={isToday ? styles.todayText : undefined}>
                       {day ?? ''}
                     </ThemedText>
+                    {dayHasImportantDate ? (
+                      <Ionicons name="heart" size={8} color={theme.accent} style={styles.importantDateDot} />
+                    ) : null}
                   </View>
                 );
               })}
@@ -223,6 +246,7 @@ const styles = StyleSheet.create({
   weekRow: { flexDirection: 'row' },
   cell: { flex: 1, textAlign: 'center', paddingVertical: 6 },
   dayCell: { alignItems: 'center', justifyContent: 'center' },
+  importantDateDot: { marginTop: 2 },
   todayText: { fontWeight: '700' },
   weekStrip: { gap: 8, paddingRight: 8 },
   dayChip: {

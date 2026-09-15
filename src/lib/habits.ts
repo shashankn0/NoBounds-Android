@@ -9,6 +9,10 @@ export type Habit = {
   owner_scope: 'mine' | 'yours' | 'ours';
   sort_order: number;
   created_at: string;
+  // real-backend-only columns — not written by this app yet, but selected so nothing chokes
+  // if a habit created by the real ios app has them set
+  habit_kind: 'standard' | 'weeks_bound' | 'bound_streak';
+  reminder_hour: number | null;
 };
 
 // one user's check-in for one habit on one day
@@ -19,7 +23,7 @@ export type HabitCompletion = {
   completed: boolean;
 };
 
-const HABIT_COLUMNS = 'id, couple_id, owner_user_id, title, owner_scope, sort_order, created_at';
+const HABIT_COLUMNS = 'id, couple_id, owner_user_id, title, owner_scope, sort_order, created_at, habit_kind, reminder_hour';
 
 // all of the caller's habits, solo + shared (rls filters the rest)
 export async function fetchHabits(): Promise<Habit[]> {
@@ -51,7 +55,8 @@ export async function createHabit(
   title: string,
   coupleId: string | null,
   ownerScope: HabitOwnerScope = coupleId ? 'ours' : 'mine',
-  completionPolicy: HabitCompletionPolicy = 'either'
+  completionPolicy: HabitCompletionPolicy = 'either',
+  reminderHour: number | null = null
 ): Promise<void> {
   const { data: userData } = await supabase.auth.getUser();
   const ownerUserId = userData.user?.id;
@@ -63,7 +68,15 @@ export async function createHabit(
     owner_user_id: ownerUserId,
     owner_scope: ownerScope,
     completion_policy: completionPolicy,
+    reminder_hour: reminderHour,
   });
+  if (error) throw error;
+}
+
+// the notify-habit-reminders edge function (real backend, runs hourly) reads this directly —
+// setting it here is the only piece needed to make habit reminders actually fire
+export async function setHabitReminderHour(habitId: string, reminderHour: number | null): Promise<void> {
+  const { error } = await supabase.from('habits').update({ reminder_hour: reminderHour }).eq('id', habitId);
   if (error) throw error;
 }
 

@@ -1,28 +1,81 @@
-import { FlatList, StyleSheet } from 'react-native';
+import { useFocusEffect } from 'expo-router';
+import { useCallback, useState } from 'react';
+import { FlatList, Pressable, StyleSheet } from 'react-native';
 
 import { NBCard } from '@/components/nb-card';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
-import { mockNotifications } from '@/lib/mock/notifications';
+import type { AppNotification } from '@/lib/database-types';
+import { fetchNotifications, markNotificationRead } from '@/lib/notifications';
 
-// sample data only — no push notifications wired up yet
 export default function NotificationsScreen() {
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      setNotifications(await fetchNotifications());
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not load notifications');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      load();
+    }, [load])
+  );
+
+  async function onOpen(notification: AppNotification) {
+    if (notification.read_at) return;
+    setNotifications((prev) =>
+      prev.map((n) => (n.id === notification.id ? { ...n, read_at: new Date().toISOString() } : n))
+    );
+    try {
+      await markNotificationRead(notification.id);
+    } catch {
+      // best-effort — worst case it just shows as unread again next load
+    }
+  }
+
   return (
     <ThemedView style={styles.container}>
-      <FlatList
-        data={mockNotifications}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.list}
-        renderItem={({ item }) => (
-          <NBCard elevated={!item.read}>
-            <ThemedText type="smallBold">{item.title}</ThemedText>
-            <ThemedText type="small" themeColor="textSecondary" style={styles.body}>
-              {item.body}
-            </ThemedText>
-          </NBCard>
-        )}
-      />
+      {loading ? (
+        <ThemedText type="default" themeColor="textSecondary">
+          Loading…
+        </ThemedText>
+      ) : notifications.length === 0 ? (
+        <ThemedText type="default" themeColor="textSecondary">
+          Nothing yet — you&apos;ll see prompt replies, reactions, and reminders here.
+        </ThemedText>
+      ) : (
+        <FlatList
+          data={notifications}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={styles.list}
+          renderItem={({ item }) => (
+            <Pressable onPress={() => onOpen(item)}>
+              <NBCard elevated={!item.read_at}>
+                <ThemedText type="smallBold">{item.title}</ThemedText>
+                <ThemedText type="small" themeColor="textSecondary" style={styles.body}>
+                  {item.body}
+                </ThemedText>
+              </NBCard>
+            </Pressable>
+          )}
+        />
+      )}
+      {error ? (
+        <ThemedText type="small" themeColor="destructive">
+          {error}
+        </ThemedText>
+      ) : null}
     </ThemedView>
   );
 }

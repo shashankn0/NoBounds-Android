@@ -11,6 +11,8 @@ import { Spacing } from '@/constants/theme';
 import { useSession } from '@/contexts/session-context';
 import { useTheme } from '@/hooks/use-theme';
 import { fetchHabits, fetchTodaysCompletions, toggleHabitToday, type Habit, type HabitCompletion } from '@/lib/habits';
+import type { ImportantDate } from '@/lib/database-types';
+import { fetchImportantDates } from '@/lib/important-dates';
 
 // full habit list + toggle — the timeline tab's calendar card is a smaller summary of this
 export default function CalendarScreen() {
@@ -18,15 +20,21 @@ export default function CalendarScreen() {
   const { session } = useSession();
   const [habits, setHabits] = useState<Habit[]>([]);
   const [completions, setCompletions] = useState<HabitCompletion[]>([]);
+  const [importantDates, setImportantDates] = useState<ImportantDate[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [habitRows, completionRows] = await Promise.all([fetchHabits(), fetchTodaysCompletions()]);
+      const [habitRows, completionRows, dateRows] = await Promise.all([
+        fetchHabits(),
+        fetchTodaysCompletions(),
+        fetchImportantDates(),
+      ]);
       setHabits(habitRows);
       setCompletions(completionRows);
+      setImportantDates(dateRows);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not load habits');
     } finally {
@@ -64,7 +72,7 @@ export default function CalendarScreen() {
           </ThemedText>
         ) : habits.length === 0 ? (
           <NBCard style={styles.centered}>
-            <Ionicons name="checkmark-done-circle-outline" size={40} color={theme.accent} style={styles.icon} />
+            <Ionicons name="checkmark-done-circle" size={40} color={theme.accent} style={styles.icon} />
             <ThemedText type="default" themeColor="textSecondary" style={styles.centeredText}>
               No habits added yet. Tap Add habit to start tracking.
             </ThemedText>
@@ -93,6 +101,33 @@ export default function CalendarScreen() {
               </Pressable>
             );
           })
+        )}
+
+        <View style={styles.headingRow}>
+          <ThemedText type="subtitle">Important dates</ThemedText>
+          <NBPrimaryButton title="Add date" onPress={() => router.push('/habit-form')} />
+        </View>
+
+        {!loading && importantDates.length === 0 ? (
+          <NBCard style={styles.centered}>
+            <Ionicons name="heart" size={40} color={theme.accent} style={styles.icon} />
+            <ThemedText type="default" themeColor="textSecondary" style={styles.centeredText}>
+              No important dates yet.
+            </ThemedText>
+          </NBCard>
+        ) : (
+          importantDates.map((date) => (
+            <NBCard key={date.id} style={styles.habitRow}>
+              <Ionicons name="heart" size={22} color={theme.accent} />
+              <View style={styles.habitText}>
+                <ThemedText type="default">{date.title}</ThemedText>
+                <ThemedText type="small" themeColor="textSecondary">
+                  {new Date(date.event_date).toLocaleDateString(undefined, { month: 'long', day: 'numeric' })}
+                  {date.repeats_yearly ? ' · every year' : ''}
+                </ThemedText>
+              </View>
+            </NBCard>
+          ))
         )}
 
         {error ? (

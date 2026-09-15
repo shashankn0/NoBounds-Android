@@ -37,3 +37,19 @@ export function errorMessage(err: unknown, fallback: string): string {
   }
   return fallback;
 }
+
+// edge functions (create-couple-invite, accept-couple-invite, ensure-daily-prompt, ...) return
+// a real {error_code, message} json body on failure, but supabase-js doesn't parse it for you —
+// it's only reachable via the FunctionsHttpError's raw `context` response. falls back to
+// errorMessage() for anything else (network failure, etc).
+export async function functionErrorMessage(err: unknown, fallback: string): Promise<string> {
+  if (err && typeof err === 'object' && 'context' in err) {
+    try {
+      const body = await (err as { context: Response }).context.json();
+      if (body?.message) return body.message as string;
+    } catch {
+      // context wasn't valid json — fall through
+    }
+  }
+  return errorMessage(err, fallback);
+}

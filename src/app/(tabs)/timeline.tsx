@@ -15,12 +15,19 @@ import { useSession } from '@/contexts/session-context';
 import { useTheme } from '@/hooks/use-theme';
 import { getSignedUrls } from '@/lib/storage';
 import { supabase } from '@/lib/supabase';
-import { fetchTimelineFeed, setTimelineFavorite, type TimelineFeedItem, type TimelineFilter } from '@/lib/timeline';
+import {
+  fetchTimelineFeed,
+  setTimelineFavorite,
+  timelineHeaderLine,
+  type TimelineFeedItem,
+  type TimelineFilter,
+} from '@/lib/timeline';
 
 // matches timelinefilter.chips in ../nobounds/nobounds/core/domain/timeline/timelinemodels.swift
 const FILTER_CHIPS: { id: TimelineFilter; label: string }[] = [
   { id: 'all', label: 'All' },
   { id: 'memory', label: 'Memories' },
+  { id: 'gratitude', label: 'Gratitude' },
   { id: 'photo', label: 'Photos' },
   { id: 'prompt', label: 'Prompts' },
   { id: 'milestone', label: 'Milestones' },
@@ -28,10 +35,11 @@ const FILTER_CHIPS: { id: TimelineFilter; label: string }[] = [
 ];
 
 const TYPE_ICON: Record<TimelineFeedItem['item_type'], keyof typeof Ionicons.glyphMap> = {
-  memory: 'book-outline',
-  photo: 'image-outline',
-  prompt: 'chatbubble-ellipses-outline',
-  milestone: 'flag-outline',
+  memory: 'book',
+  gratitude: 'heart',
+  photo: 'image',
+  prompt: 'chatbubble-ellipses',
+  milestone: 'flag',
 };
 
 export default function TimelineScreen() {
@@ -46,30 +54,50 @@ export default function TimelineScreen() {
   const [activeFilter, setActiveFilter] = useState<TimelineFilter>('all');
 
   // mirrors ios's enrichphotothumbnails: the feed itself only returns bare paths, so thumbnails
-  // are resolved to signed urls in a second pass, keyed by the owning memory's id
+  // are resolved to signed urls in a second pass. presence (bound) photos already carry their
+  // path in the feed's own metadata; memory photos live in a separate one-to-many table, so
+  // that side needs its own lookup (first photo per memory, by sort_order)
   const loadThumbnails = useCallback(async (feedItems: TimelineFeedItem[]) => {
+    const presencePaths = feedItems
+      .filter((i): i is TimelineFeedItem & { metadata: { storage_path: string } } =>
+        i.item_type === 'photo' && typeof i.metadata?.storage_path === 'string'
+      )
+      .map((i) => ({ entityId: i.entity_id, path: i.metadata.storage_path }));
+
     const memoryIds = feedItems.filter((i) => i.item_type === 'memory').map((i) => i.entity_id);
-    if (memoryIds.length === 0) {
+    let memoryPaths: { entityId: string; path: string }[] = [];
+    if (memoryIds.length > 0) {
+      const { data } = await supabase
+        .from('timeline_memory_photos')
+        .select('memory_id, storage_path')
+        .in('memory_id', memoryIds)
+        .order('sort_order', { ascending: true });
+      const firstPerMemory = new Map<string, string>();
+      for (const row of (data ?? []) as { memory_id: string; storage_path: string }[]) {
+        if (!firstPerMemory.has(row.memory_id)) firstPerMemory.set(row.memory_id, row.storage_path);
+      }
+      memoryPaths = Array.from(firstPerMemory, ([entityId, path]) => ({ entityId, path }));
+    }
+
+    if (presencePaths.length === 0 && memoryPaths.length === 0) {
       setThumbnails({});
       return;
     }
-    const { data } = await supabase.from('memories').select('id, photo_path').in('id', memoryIds);
-    const paths = (data ?? [])
-      .filter((row): row is { id: string; photo_path: string } => !!row.photo_path)
-      .map((row) => ({ id: row.id, path: row.photo_path }));
-    if (paths.length === 0) {
-      setThumbnails({});
-      return;
+
+    // different buckets, so each group gets its own signed-url batch
+    const [presenceSigned, memorySigned] = await Promise.all([
+      getSignedUrls('presence', presencePaths.map((p) => p.path)),
+      getSignedUrls('memory-photos', memoryPaths.map((p) => p.path)),
+    ]);
+
+    const byEntityId: Record<string, string> = {};
+    for (const { entityId, path } of presencePaths) {
+      if (presenceSigned[path]) byEntityId[entityId] = presenceSigned[path];
     }
-    const signed = await getSignedUrls(
-      'memory-photos',
-      paths.map((p) => p.path)
-    );
-    const byMemoryId: Record<string, string> = {};
-    for (const { id, path } of paths) {
-      if (signed[path]) byMemoryId[id] = signed[path];
+    for (const { entityId, path } of memoryPaths) {
+      if (memorySigned[path]) byEntityId[entityId] = memorySigned[path];
     }
-    setThumbnails(byMemoryId);
+    setThumbnails(byEntityId);
   }, []);
 
   const load = useCallback(async () => {
@@ -116,7 +144,7 @@ export default function TimelineScreen() {
 
   return (
     <ThemedView style={{ flex: 1 }}>
-      <ScreenHeader centerLabel={couple ? 'Paired with Partner 💛' : undefined} />
+      <ScreenHeader showPairing />
       <ScrollView contentContainerStyle={[styles.container, { paddingBottom: insets.bottom + BottomTabInset }]}>
         <NBCard>
           <MonthCalendar />
@@ -195,22 +223,24 @@ export default function TimelineScreen() {
           <View style={styles.feed}>
             {items.map((item) => (
               <NBCard key={`${item.item_type}-${item.item_id}`} style={styles.itemCard}>
-                {thumbnails[item.entity_id] ? (
-                  <Image source={{ uri: thumbnails[item.entity_id] }} style={styles.itemThumb} />
-                ) : (
-                  <Ionicons name={TYPE_ICON[item.item_type]} size={20} color={theme.accent} style={styles.itemIcon} />
-                )}
-                <View style={styles.itemText}>
-                  <ThemedText type="default">{item.title}</ThemedText>
-                  {item.subtitle ? (
-                    <ThemedText type="small" themeColor="textSecondary">
-                      {item.subtitle}
-                    </ThemedText>
-                  ) : null}
-                  <ThemedText type="small" themeColor="textSecondary">
-                    {new Date(item.occurred_at).toLocaleDateString()}
-                  </ThemedText>
-                </View>
+                <Pressable
+                  onPress={item.item_type === 'photo' ? () => router.push({ pathname: '/photo-detail', params: { photoId: item.entity_id } }) : undefined}
+                  disabled={item.item_type !== 'photo'}
+                  style={styles.itemPressable}>
+                  {thumbnails[item.entity_id] ? (
+                    <Image source={{ uri: thumbnails[item.entity_id] }} style={styles.itemThumb} />
+                  ) : (
+                    <Ionicons name={TYPE_ICON[item.item_type]} size={20} color={theme.accent} style={styles.itemIcon} />
+                  )}
+                  <View style={styles.itemText}>
+                    <ThemedText type="default">{timelineHeaderLine(item)}</ThemedText>
+                    {item.subtitle ? (
+                      <ThemedText type="small" themeColor="textSecondary">
+                        {item.subtitle}
+                      </ThemedText>
+                    ) : null}
+                  </View>
+                </Pressable>
                 <Pressable onPress={() => onToggleFavorite(item)} hitSlop={8}>
                   <Ionicons
                     name={item.is_favorite ? 'star' : 'star-outline'}
@@ -249,6 +279,7 @@ const styles = StyleSheet.create({
   emptyIcon: { marginBottom: 4 },
   feed: { gap: 12 },
   itemCard: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
+  itemPressable: { flex: 1, flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
   itemIcon: { marginTop: 2 },
   itemThumb: { width: 44, height: 44, borderRadius: 10 },
   itemText: { flex: 1, gap: 2 },

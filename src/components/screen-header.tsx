@@ -1,35 +1,42 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Image, Pressable, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
+import { useSession } from '@/contexts/session-context';
 import { useTheme } from '@/hooks/use-theme';
 
 type ScreenHeaderProps = {
-  centerLabel?: string;
+  // shows "Paired with: {partner name}" in the center, tappable through to /pairing —
+  // mirrors ios's coupleheaderbutton, only rendered once actually paired
+  showPairing?: boolean;
 };
 
 // mirrors the toolbar every tab gets in maintabview.swift: notificationtoolbarbutton (bell, top-left)
 // + profiletoolbarbutton (avatar, top-right), with an optional centered "paired with" label.
 // pinned like ios's nav bar (doesn't scroll away) — padded by the safe-area inset so it clears the
 // status bar instead of being clipped by it.
-export function ScreenHeader({ centerLabel }: ScreenHeaderProps) {
+export function ScreenHeader({ showPairing = false }: ScreenHeaderProps) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
+  const { couple, featuredAvatarUrl } = useSession();
 
   return (
     <View style={[styles.row, { paddingTop: insets.top + 8 }]}>
       <Pressable
         onPress={() => router.push('/notifications')}
         style={[styles.iconButton, { backgroundColor: theme.surface }]}>
-        <Ionicons name="notifications-outline" size={20} color={theme.textPrimary} />
+        <Ionicons name="notifications" size={20} color={theme.textPrimary} />
       </Pressable>
 
-      {centerLabel ? (
-        <ThemedText type="smallBold" style={styles.centerLabel} numberOfLines={1}>
-          {centerLabel}
-        </ThemedText>
+      {showPairing && couple ? (
+        <Pressable onPress={() => router.push('/pairing')} style={[styles.centerLabel, styles.pairingRow]} hitSlop={8}>
+          <ThemedText type="smallBold" numberOfLines={1}>
+            Paired with: {couple.partnerName?.trim() || 'partner'}
+          </ThemedText>
+          <Ionicons name="chevron-down" size={14} color={theme.textSecondary} style={styles.chevron} />
+        </Pressable>
       ) : (
         <View style={styles.centerLabel} />
       )}
@@ -37,7 +44,11 @@ export function ScreenHeader({ centerLabel }: ScreenHeaderProps) {
       <Pressable
         onPress={() => router.push('/profile')}
         style={[styles.avatarButton, { backgroundColor: theme.accentMuted }]}>
-        <Ionicons name="person" size={20} color={theme.textOnAccent} />
+        {featuredAvatarUrl ? (
+          <Image source={{ uri: featuredAvatarUrl }} style={styles.avatarImage} />
+        ) : (
+          <Ionicons name="person" size={20} color={theme.textOnAccent} />
+        )}
       </Pressable>
     </View>
   );
@@ -64,6 +75,10 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
   },
-  centerLabel: { flex: 1, textAlign: 'center' },
+  avatarImage: { width: 40, height: 40 },
+  centerLabel: { flex: 1, alignItems: 'center' },
+  pairingRow: { flexDirection: 'row', justifyContent: 'center' },
+  chevron: { marginLeft: 4 },
 });

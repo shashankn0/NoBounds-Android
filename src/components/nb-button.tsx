@@ -45,7 +45,7 @@ export function NBSecondaryButton({ title, onPress, disabled }: NBButtonProps) {
           opacity: disabled ? 0.5 : pressed ? 0.85 : 1,
         },
       ]}>
-      <ThemedText type="smallBold" style={styles.label}>
+      <ThemedText type="smallBold" themeColor="accent" style={styles.label}>
         {title}
       </ThemedText>
     </Pressable>

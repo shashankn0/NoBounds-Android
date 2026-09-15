@@ -8,7 +8,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { useSession } from '@/contexts/session-context';
 import { useTheme } from '@/hooks/use-theme';
-import { supabase } from '@/lib/supabase';
+import { functionErrorMessage, supabase } from '@/lib/supabase';
 
 export default function PairingScreen() {
   const theme = useTheme();
@@ -18,29 +18,32 @@ export default function PairingScreen() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  // one-time code, redeemed by the partner below
+  // one-time code, redeemed by the partner below — this is a real edge function on the real
+  // backend (create-couple-invite), confirmed against its actual deployed source: no request
+  // body, returns {contract_version, invite_id, code, expires_at, share_url, deep_link_url}
   async function onCreateInvite() {
     setError(null);
     setLoading(true);
-    const { data, error: rpcError } = await supabase.rpc('create_couple_invite').single();
+    const { data, error: fnError } = await supabase.functions.invoke('create-couple-invite');
     setLoading(false);
-    if (rpcError) {
-      setError(rpcError.message);
+    if (fnError) {
+      setError(await functionErrorMessage(fnError, 'Could not create an invite'));
       return;
     }
     setInviteCode((data as { code: string }).code);
   }
 
-  // triggers the couple merge on the backend — solo data gets folded into the new couple
+  // triggers the couple merge on the backend — solo data gets folded into the new couple.
+  // also a real edge function (accept-couple-invite); body key is `code`, not `invite_code`
   async function onAcceptInvite() {
     setError(null);
     setLoading(true);
-    const { error: rpcError } = await supabase.rpc('accept_couple_invite', {
-      invite_code: enteredCode.trim(),
+    const { error: fnError } = await supabase.functions.invoke('accept-couple-invite', {
+      body: { code: enteredCode.trim() },
     });
     setLoading(false);
-    if (rpcError) {
-      setError(rpcError.message);
+    if (fnError) {
+      setError(await functionErrorMessage(fnError, 'Could not pair up'));
       return;
     }
     await refreshCouple();

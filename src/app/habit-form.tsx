@@ -9,6 +9,7 @@ import { ThemedView } from '@/components/themed-view';
 import { useSession } from '@/contexts/session-context';
 import { useTheme } from '@/hooks/use-theme';
 import { createHabit, type HabitCompletionPolicy, type HabitOwnerScope } from '@/lib/habits';
+import { createImportantDate } from '@/lib/important-dates';
 
 type Page = 'habit' | 'important_date';
 
@@ -38,19 +39,20 @@ export default function HabitFormScreen() {
   async function onSave() {
     if (title.trim().length === 0) return;
 
-    if (page === 'important_date') {
-      // important dates aren't wired to a backend yet in this prototype — just dismiss
-      router.back();
-      return;
-    }
-
     setSaving(true);
     setError(null);
     try {
-      await createHabit(title.trim(), couple?.id ?? null, couple ? scope : 'mine', policy);
+      if (page === 'important_date') {
+        // real important_dates.event_date is a plain date column, not a picker in this form yet —
+        // defaults to today, matching the read-only "When" pill shown below
+        const eventDate = new Date().toISOString().slice(0, 10);
+        await createImportantDate(title.trim(), eventDate, couple?.id ?? null, description.trim() || undefined, repeatsYearly);
+      } else {
+        await createHabit(title.trim(), couple?.id ?? null, couple ? scope : 'mine', policy);
+      }
       router.back();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not save habit');
+      setError(err instanceof Error ? err.message : 'Could not save');
     } finally {
       setSaving(false);
     }

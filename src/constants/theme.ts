@@ -41,7 +41,7 @@ export const Spacing = {
 
 // clearance scroll content needs above the floating tab bar (see app-tabs.tsx), on top of
 // the safe-area bottom inset each screen already adds separately. sized with headroom above
-// the bar's own computed height (~74px content + 8px top pad, plus its own safe-area padding)
-// so content doesn't get clipped on devices that report a small/zero bottom inset.
-export const BottomTabInset = Platform.select({ ios: 50, android: 100 }) ?? 0;
+// the bar's own computed height (~63px content + 6px top pad + the 8px it holds itself off
+// the system nav bar) so content doesn't get clipped on devices reporting a small/zero inset.
+export const BottomTabInset = Platform.select({ ios: 50, android: 90 }) ?? 0;
 export const MaxContentWidth = 800; // caps content width on web/tablet

@@ -17,7 +17,7 @@ const MAX_PHOTOS = 10;
 
 export default function MemoryFormScreen() {
   const theme = useTheme();
-  const { couple } = useSession();
+  const { session, couple } = useSession();
   // keeps the full picked asset (not just the uri) so the real mime type survives to upload time
   const [photos, setPhotos] = useState<ImagePicker.ImagePickerAsset[]>([]);
   const [title, setTitle] = useState('');
@@ -38,19 +38,20 @@ export default function MemoryFormScreen() {
   }
 
   async function onSave() {
-    if (!couple || title.trim().length === 0) return;
+    if (!session || title.trim().length === 0) return;
     setSaving(true);
     setError(null);
 
-    // the prototype's `memories` table only has a single photo_path column — the real app
-    // supports multiple photos per memory via a separate table, not wired up here yet
-    const caption = notes.trim().length > 0 ? `${title.trim()} — ${notes.trim()}` : title.trim();
-
-    // insert first (no photo yet) so the memory's own id exists to scope the upload path —
-    // memory-photos is a private bucket whose rls ties each file to its owning memory's id
+    // real timeline_memories is solo-capable (couple_id nullable), same pattern as habits —
+    // merges into the couple automatically once paired, so no need to gate saving on pairing
     const { data: inserted, error: insertError } = await supabase
-      .from('memories')
-      .insert({ couple_id: couple.id, caption })
+      .from('timeline_memories')
+      .insert({
+        couple_id: couple?.id ?? null,
+        owner_user_id: session.user.id,
+        title: title.trim(),
+        body: notes.trim().length > 0 ? notes.trim() : null,
+      })
       .select('id')
       .single();
 
@@ -60,18 +61,22 @@ export default function MemoryFormScreen() {
       return;
     }
 
-    const firstPhoto = photos[0];
-    if (firstPhoto) {
-      // use the picked file's real mime type — not every photo is a jpeg
-      const mimeType = firstPhoto.mimeType ?? 'image/jpeg';
+    // real backend supports multiple photos per memory via a child table — upload every
+    // picked photo, not just the first
+    for (let i = 0; i < photos.length; i++) {
+      const photo = photos[i];
+      const mimeType = photo.mimeType ?? 'image/jpeg';
       const extension = mimeType.split('/')[1] ?? 'jpg';
-      const path = `${inserted.id}/${Date.now()}.${extension}`;
+      const path = `${inserted.id}/${Date.now()}-${i}.${extension}`;
       try {
-        await uploadPrivate('memory-photos', path, firstPhoto.uri, mimeType);
-        await supabase.from('memories').update({ photo_path: path }).eq('id', inserted.id);
+        await uploadPrivate('memory-photos', path, photo.uri, mimeType);
+        const { error: photoError } = await supabase
+          .from('timeline_memory_photos')
+          .insert({ memory_id: inserted.id, storage_path: path, sort_order: i });
+        if (photoError) throw photoError;
       } catch (err) {
         setSaving(false);
-        setError(errorMessage(err, 'Memory saved, but the photo failed to upload'));
+        setError(errorMessage(err, 'Memory saved, but a photo failed to upload'));
         return;
       }
     }
@@ -88,7 +93,7 @@ export default function MemoryFormScreen() {
         onLeftPress={() => router.back()}
         rightLabel={saving ? 'Saving…' : 'Save'}
         onRightPress={onSave}
-        rightDisabled={title.trim().length === 0 || saving || !couple}
+        rightDisabled={title.trim().length === 0 || saving}
       />
       <ScrollView contentContainerStyle={styles.container}>
         <ThemedText type="title">Photos</ThemedText>
@@ -98,7 +103,7 @@ export default function MemoryFormScreen() {
 
         {photos.length === 0 ? (
           <View style={[styles.dropZone, { borderColor: theme.border }]}>
-            <Ionicons name="images-outline" size={32} color={theme.textSecondary} />
+            <Ionicons name="images" size={32} color={theme.textSecondary} />
             <ThemedText type="small" themeColor="textSecondary" style={styles.dropZoneText}>
               Your photos will appear here
             </ThemedText>
@@ -114,7 +119,7 @@ export default function MemoryFormScreen() {
         <Pressable
           onPress={onChoosePhotos}
           style={[styles.chooseButton, { backgroundColor: theme.accentMuted + '33' }]}>
-          <Ionicons name="images-outline" size={18} color={theme.accent} />
+          <Ionicons name="images" size={18} color={theme.accent} />
           <ThemedText type="smallBold" themeColor="accent">
             Choose photos
           </ThemedText>

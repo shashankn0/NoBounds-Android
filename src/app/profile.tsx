@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Image, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 
 import { NBCard } from '@/components/nb-card';
@@ -11,31 +11,27 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { useSession } from '@/contexts/session-context';
 import { useTheme } from '@/hooks/use-theme';
-import { getSignedUrl, uploadPrivate } from '@/lib/storage';
+import type { AvatarSource } from '@/lib/avatar-preference';
+import { uploadPrivate } from '@/lib/storage';
 import { errorMessage, supabase } from '@/lib/supabase';
 
 const deviceTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
 export default function ProfileScreen() {
   const theme = useTheme();
-  const { session, profile, refreshProfile } = useSession();
+  const { session, profile, couple, refreshProfile, avatarSource, setAvatarSource, myAvatarUrl, partnerAvatarUrl } =
+    useSession();
   const [name, setName] = useState(profile?.display_name ?? '');
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [avatarSignedUrl, setAvatarSignedUrl] = useState<string | null>(null);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [avatarError, setAvatarError] = useState<string | null>(null);
 
-  // profiles.avatar_url actually stores a bare avatars-bucket path, not a real url —
-  // same pattern as memories.photo_path, resolved to a signed url for display here
-  useEffect(() => {
-    if (!profile?.avatar_url) {
-      setAvatarSignedUrl(null);
-      return;
-    }
-    getSignedUrl('avatars', profile.avatar_url).then(setAvatarSignedUrl);
-  }, [profile?.avatar_url]);
+  const partnerLabel = couple?.partnerName?.trim() || 'Partner';
+  // the selected photo always sits on the left, the other on the right — matches ios
+  const leadingAvatarUrl = avatarSource === 'partner' ? partnerAvatarUrl : myAvatarUrl;
+  const trailingAvatarUrl = avatarSource === 'partner' ? myAvatarUrl : partnerAvatarUrl;
 
   async function onChangePhoto() {
     if (!session) return;
@@ -95,12 +91,14 @@ export default function ProfileScreen() {
     <ThemedView style={{ flex: 1 }}>
       <ScrollView contentContainerStyle={styles.container}>
         <View style={styles.avatarSection}>
-          {avatarSignedUrl ? (
-            <Image source={{ uri: avatarSignedUrl }} style={styles.avatar} />
-          ) : (
-            <View style={[styles.avatar, { backgroundColor: theme.accentMuted }]}>
-              <Ionicons name="person" size={44} color={theme.textOnAccent} />
+          {couple ? (
+            <View style={styles.avatarPairRow}>
+              <AvatarCircle url={leadingAvatarUrl} size={72} theme={theme} />
+              <Ionicons name="heart" size={20} color={theme.accent} />
+              <AvatarCircle url={trailingAvatarUrl} size={72} theme={theme} />
             </View>
+          ) : (
+            <AvatarCircle url={myAvatarUrl} size={96} theme={theme} />
           )}
           <Pressable onPress={onChangePhoto} disabled={uploadingAvatar}>
             <ThemedText type="link" themeColor="accent">
@@ -111,6 +109,18 @@ export default function ProfileScreen() {
             <ThemedText type="small" themeColor="destructive">
               {avatarError}
             </ThemedText>
+          ) : null}
+
+          {couple ? (
+            <View style={[styles.segmented, { backgroundColor: theme.backgroundSecondary }]}>
+              {(['mine', 'partner'] as AvatarSource[]).map((source) => (
+                <Pressable key={source} onPress={() => setAvatarSource(source)} style={styles.segmentWrap}>
+                  <View style={[styles.segment, avatarSource === source && { backgroundColor: theme.surface }]}>
+                    <ThemedText type="smallBold">{source === 'mine' ? 'My photo' : `${partnerLabel}'s photo`}</ThemedText>
+                  </View>
+                </Pressable>
+              ))}
+            </View>
           ) : null}
         </View>
 
@@ -170,20 +180,34 @@ export default function ProfileScreen() {
         </NBCard>
 
         <NBCard style={styles.rowsCard}>
-          <NBListRow icon="notifications-outline" title="Notification center" onPress={() => router.push('/notifications')} />
-          <NBListRow icon="color-palette-outline" title="Appearance" onPress={() => router.push('/settings/appearance')} />
-          <NBListRow icon="chatbox-ellipses-outline" title="Feedback & support" />
-          <NBListRow icon="settings-outline" title="Settings" onPress={() => router.push('/settings')} />
+          <NBListRow icon="notifications" title="Notification center" onPress={() => router.push('/notifications')} />
+          <NBListRow icon="color-palette" title="Appearance" onPress={() => router.push('/settings/appearance')} />
+          <NBListRow icon="chatbox-ellipses" title="Feedback & support" onPress={() => router.push('/feedback-support')} />
+          <NBListRow icon="settings" title="Settings" onPress={() => router.push('/settings')} />
         </NBCard>
       </ScrollView>
     </ThemedView>
   );
 }
 
+function AvatarCircle({ url, size, theme }: { url: string | null; size: number; theme: ReturnType<typeof useTheme> }) {
+  const circleStyle = { width: size, height: size, borderRadius: size / 2 };
+  if (url) return <Image source={{ uri: url }} style={circleStyle} />;
+  return (
+    <View style={[styles.avatarPlaceholder, circleStyle, { backgroundColor: theme.accentMuted }]}>
+      <Ionicons name="person" size={size * 0.46} color={theme.textOnAccent} />
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   container: { padding: 20, gap: 16 },
   avatarSection: { alignItems: 'center', gap: 8, marginBottom: 4 },
-  avatar: { width: 96, height: 96, borderRadius: 48, alignItems: 'center', justifyContent: 'center' },
+  avatarPlaceholder: { alignItems: 'center', justifyContent: 'center' },
+  avatarPairRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  segmented: { flexDirection: 'row', borderRadius: 12, padding: 4, marginTop: 8, alignSelf: 'stretch' },
+  segmentWrap: { flex: 1 },
+  segment: { paddingVertical: 8, alignItems: 'center', borderRadius: 9 },
   input: { borderBottomWidth: 1, paddingVertical: 8, fontSize: 16, marginTop: 4, marginBottom: 4 },
   cardButton: { marginTop: 8 },
   savedText: { marginTop: 8 },

@@ -73,6 +73,10 @@ function RootNavigator() {
           <Stack.Screen name="notifications" options={{ headerShown: true, title: 'Notifications' }} />
           <Stack.Screen name="settings/index" options={{ headerShown: true, title: 'Settings' }} />
           <Stack.Screen name="settings/appearance" options={{ headerShown: true, title: 'Appearance' }} />
+          <Stack.Screen name="account" options={{ headerShown: true, title: 'Account' }} />
+          <Stack.Screen name="about" options={{ headerShown: true, title: 'From the creators' }} />
+          <Stack.Screen name="feedback-support" options={{ headerShown: true, title: 'Feedback & support' }} />
+          <Stack.Screen name="request-data" options={{ presentation: 'modal' }} />
           <Stack.Screen name="pet" options={{ headerShown: true, title: 'Pet' }} />
           <Stack.Screen name="date-ideas" options={{ headerShown: true, title: 'Date ideas' }} />
           <Stack.Screen name="gifts" options={{ headerShown: true, title: 'Gift ideas' }} />
@@ -82,7 +86,7 @@ function RootNavigator() {
           <Stack.Screen name="habit-form" options={{ presentation: 'modal' }} />
           <Stack.Screen name="memory-form" options={{ presentation: 'modal' }} />
           <Stack.Screen name="extensions" options={{ presentation: 'modal' }} />
-          <Stack.Screen name="bound-camera" options={{ presentation: 'fullScreenModal' }} />
+          <Stack.Screen name="photo-detail" options={{ headerShown: false }} />
         </Stack.Protected>
       </Stack>
     </ThemeProvider>

@@ -473,9 +473,7 @@ create policy "memories_insert_couple" on public.memories
   for insert with check (public.is_couple_member(couple_id) and author_id = auth.uid());
 
 -- ============ timeline: unified feed (mirrors iOS's timeline_feed RPC) ============
--- presence_photos: nothing writes to this yet (Bound's camera capture isn't wired up in this
--- prototype), but the table + RLS exist so the "Photos" filter has a real, empty source instead
--- of being unbuildable — and so Bound can start writing here later without a schema change.
+-- presence_photos: written to by Bound (PhotosScreen's onSend) on capture or library pick.
 create table if not exists public.presence_photos (
   id uuid primary key default gen_random_uuid(),
   couple_id uuid not null references public.couples (id) on delete cascade,
@@ -485,6 +483,13 @@ create table if not exists public.presence_photos (
   mood_tag text,
   created_at timestamptz not null default now()
 );
+
+-- capture_source distinguishes Bound's in-app camera from a library pick (see PhotosScreen /
+-- database-types.ts) — added after the table above, since photos.tsx's insert already writes it.
+alter table public.presence_photos add column if not exists capture_source text not null default 'camera';
+alter table public.presence_photos drop constraint if exists presence_photos_capture_source_check;
+alter table public.presence_photos add constraint presence_photos_capture_source_check
+  check (capture_source in ('camera', 'library'));
 
 alter table public.presence_photos enable row level security;
 
@@ -580,7 +585,8 @@ returns table (
   subtitle text,
   entity_type text,
   entity_id uuid,
-  is_favorite boolean
+  is_favorite boolean,
+  metadata jsonb
 )
 language plpgsql
 security definer set search_path = public
@@ -597,21 +603,26 @@ begin
   return query
   with unified as (
     select 'memory'::text as item_type, m.id::text as item_id, m.created_at as occurred_at,
-           m.caption as title, null::text as subtitle, 'memory'::text as entity_type, m.id as entity_id
+           m.caption as title, null::text as subtitle, 'memory'::text as entity_type, m.id as entity_id,
+           '{}'::jsonb as metadata
     from public.memories m
     where m.couple_id = my_couple_id
 
     union all
 
+    -- metadata carries what the client's timeline row formatter needs to tell a Bound (camera)
+    -- capture from a library-picked photo, and to resolve its thumbnail (see timeline.ts/tsx)
     select 'photo'::text, p.id::text, p.created_at,
-           coalesce(p.caption, 'Partner presence'), p.mood_tag, 'photo'::text, p.id
+           coalesce(p.caption, 'Partner presence'), p.mood_tag, 'photo'::text, p.id,
+           jsonb_build_object('storage_path', p.storage_path, 'mood_tag', p.mood_tag, 'capture_source', p.capture_source)
     from public.presence_photos p
     where p.couple_id = my_couple_id
 
     union all
 
     select 'prompt'::text, cdp.id::text, cdp.created_at,
-           pt.text, null::text, 'prompt'::text, cdp.id
+           pt.text, null::text, 'prompt'::text, cdp.id,
+           '{}'::jsonb
     from public.couple_daily_prompts cdp
     join public.prompt_templates pt on pt.id = cdp.prompt_template_id
     where cdp.couple_id = my_couple_id
@@ -620,7 +631,8 @@ begin
     union all
 
     select 'milestone'::text, tm.id::text, tm.occurred_at,
-           tm.title, tm.body, 'milestone'::text, tm.id
+           tm.title, tm.body, 'milestone'::text, tm.id,
+           '{}'::jsonb
     from public.timeline_milestones tm
     where tm.couple_id = my_couple_id
   ),
@@ -633,7 +645,7 @@ begin
       ) as is_favorite
     from unified u
   )
-  select f.item_type, f.item_id, f.occurred_at, f.title, f.subtitle, f.entity_type, f.entity_id, f.is_favorite
+  select f.item_type, f.item_id, f.occurred_at, f.title, f.subtitle, f.entity_type, f.entity_id, f.is_favorite, f.metadata
   from favorited f
   where (p_item_types is null or f.item_type = any(p_item_types))
     and (not p_favorites_only or f.is_favorite)
@@ -646,6 +658,454 @@ begin
   limit p_limit;
 end;
 $$;
+
+-- ============ flashcards (Play tab language games) ============
+-- content is read-only for clients; mirrors iOS's flashcard_decks/flashcard_cards catalog.
+create table if not exists public.flashcard_decks (
+  id uuid primary key default gen_random_uuid(),
+  language_key text not null check (language_key in ('spanish', 'japanese')),
+  title text not null,
+  subtitle text,
+  active boolean not null default true,
+  sort_order int not null default 0,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.flashcard_cards (
+  id uuid primary key default gen_random_uuid(),
+  deck_id uuid not null references public.flashcard_decks (id) on delete cascade,
+  front_text text not null,
+  back_text text not null,
+  reading_text text,
+  sort_order int not null default 0,
+  active boolean not null default true,
+  created_at timestamptz not null default now(),
+  -- lets the seed data below be re-run safely instead of duplicating every card each time
+  unique (deck_id, sort_order)
+);
+
+create index if not exists flashcard_decks_language_sort_idx
+  on public.flashcard_decks (language_key, sort_order);
+create index if not exists flashcard_cards_deck_sort_idx
+  on public.flashcard_cards (deck_id, sort_order);
+
+alter table public.flashcard_decks enable row level security;
+alter table public.flashcard_cards enable row level security;
+
+drop policy if exists "flashcard_decks_select" on public.flashcard_decks;
+create policy "flashcard_decks_select" on public.flashcard_decks
+  for select to authenticated using (active = true);
+
+drop policy if exists "flashcard_cards_select" on public.flashcard_cards;
+create policy "flashcard_cards_select" on public.flashcard_cards
+  for select to authenticated using (active = true);
+
+-- fixed ids (matching iOS's real deck ids) so this file stays re-runnable
+insert into public.flashcard_decks (id, language_key, title, subtitle, sort_order) values
+  ('a1000001-0000-4000-8000-000000000001', 'spanish', 'Spanish Basics', '180 essential words & phrases', 0),
+  ('a1000002-0000-4000-8000-000000000002', 'japanese', 'Japanese Basics', '180 essential words & phrases', 0)
+on conflict (id) do update set
+  language_key = excluded.language_key,
+  title = excluded.title,
+  subtitle = excluded.subtitle;
+
+insert into public.flashcard_cards (deck_id, front_text, back_text, sort_order) values
+  ('a1000001-0000-4000-8000-000000000001', 'Hola', 'Hello', 0),
+  ('a1000001-0000-4000-8000-000000000001', 'Buenos días', 'Good morning', 1),
+  ('a1000001-0000-4000-8000-000000000001', 'Buenas tardes', 'Good afternoon', 2),
+  ('a1000001-0000-4000-8000-000000000001', 'Buenas noches', 'Good evening / Good night', 3),
+  ('a1000001-0000-4000-8000-000000000001', 'Adiós', 'Goodbye', 4),
+  ('a1000001-0000-4000-8000-000000000001', 'Por favor', 'Please', 5),
+  ('a1000001-0000-4000-8000-000000000001', 'Gracias', 'Thank you', 6),
+  ('a1000001-0000-4000-8000-000000000001', 'De nada', 'You''re welcome', 7),
+  ('a1000001-0000-4000-8000-000000000001', 'Lo siento', 'I''m sorry', 8),
+  ('a1000001-0000-4000-8000-000000000001', '¿Cómo estás?', 'How are you?', 9),
+  ('a1000001-0000-4000-8000-000000000001', 'Estoy bien', 'I''m fine', 10),
+  ('a1000001-0000-4000-8000-000000000001', 'Mucho gusto', 'Nice to meet you', 11),
+  ('a1000001-0000-4000-8000-000000000001', 'Te amo', 'I love you', 12),
+  ('a1000001-0000-4000-8000-000000000001', 'Te extraño', 'I miss you', 13),
+  ('a1000001-0000-4000-8000-000000000001', 'Sí', 'Yes', 14),
+  ('a1000001-0000-4000-8000-000000000001', 'No', 'No', 15),
+  ('a1000001-0000-4000-8000-000000000001', '¿Qué tal?', 'What''s up?', 16),
+  ('a1000001-0000-4000-8000-000000000001', 'Hasta luego', 'See you later', 17),
+  ('a1000001-0000-4000-8000-000000000001', 'Uno', 'One', 18),
+  ('a1000001-0000-4000-8000-000000000001', 'Dos', 'Two', 19),
+  ('a1000001-0000-4000-8000-000000000001', 'Tres', 'Three', 20),
+  ('a1000001-0000-4000-8000-000000000001', 'Cuatro', 'Four', 21),
+  ('a1000001-0000-4000-8000-000000000001', 'Cinco', 'Five', 22),
+  ('a1000001-0000-4000-8000-000000000001', 'Seis', 'Six', 23),
+  ('a1000001-0000-4000-8000-000000000001', 'Siete', 'Seven', 24),
+  ('a1000001-0000-4000-8000-000000000001', 'Ocho', 'Eight', 25),
+  ('a1000001-0000-4000-8000-000000000001', 'Nueve', 'Nine', 26),
+  ('a1000001-0000-4000-8000-000000000001', 'Diez', 'Ten', 27),
+  ('a1000001-0000-4000-8000-000000000001', 'Once', 'Eleven', 28),
+  ('a1000001-0000-4000-8000-000000000001', 'Doce', 'Twelve', 29),
+  ('a1000001-0000-4000-8000-000000000001', 'Trece', 'Thirteen', 30),
+  ('a1000001-0000-4000-8000-000000000001', 'Catorce', 'Fourteen', 31),
+  ('a1000001-0000-4000-8000-000000000001', 'Quince', 'Fifteen', 32),
+  ('a1000001-0000-4000-8000-000000000001', 'Dieciséis', 'Sixteen', 33),
+  ('a1000001-0000-4000-8000-000000000001', 'Diecisiete', 'Seventeen', 34),
+  ('a1000001-0000-4000-8000-000000000001', 'Dieciocho', 'Eighteen', 35),
+  ('a1000001-0000-4000-8000-000000000001', 'Diecinueve', 'Nineteen', 36),
+  ('a1000001-0000-4000-8000-000000000001', 'Veinte', 'Twenty', 37),
+  ('a1000001-0000-4000-8000-000000000001', 'Veintiuno', 'Twenty-one', 38),
+  ('a1000001-0000-4000-8000-000000000001', 'Veintidós', 'Twenty-two', 39),
+  ('a1000001-0000-4000-8000-000000000001', 'Veinticinco', 'Twenty-five', 40),
+  ('a1000001-0000-4000-8000-000000000001', 'Treinta', 'Thirty', 41),
+  ('a1000001-0000-4000-8000-000000000001', 'Rojo', 'Red', 42),
+  ('a1000001-0000-4000-8000-000000000001', 'Azul', 'Blue', 43),
+  ('a1000001-0000-4000-8000-000000000001', 'Verde', 'Green', 44),
+  ('a1000001-0000-4000-8000-000000000001', 'Amarillo', 'Yellow', 45),
+  ('a1000001-0000-4000-8000-000000000001', 'Negro', 'Black', 46),
+  ('a1000001-0000-4000-8000-000000000001', 'Blanco', 'White', 47),
+  ('a1000001-0000-4000-8000-000000000001', 'Rosa', 'Pink', 48),
+  ('a1000001-0000-4000-8000-000000000001', 'Morado', 'Purple', 49),
+  ('a1000001-0000-4000-8000-000000000001', 'Naranja', 'Orange', 50),
+  ('a1000001-0000-4000-8000-000000000001', 'Gris', 'Gray', 51),
+  ('a1000001-0000-4000-8000-000000000001', 'Madre', 'Mother', 52),
+  ('a1000001-0000-4000-8000-000000000001', 'Padre', 'Father', 53),
+  ('a1000001-0000-4000-8000-000000000001', 'Hermano', 'Brother', 54),
+  ('a1000001-0000-4000-8000-000000000001', 'Hermana', 'Sister', 55),
+  ('a1000001-0000-4000-8000-000000000001', 'Hijo', 'Son', 56),
+  ('a1000001-0000-4000-8000-000000000001', 'Hija', 'Daughter', 57),
+  ('a1000001-0000-4000-8000-000000000001', 'Abuelo', 'Grandfather', 58),
+  ('a1000001-0000-4000-8000-000000000001', 'Abuela', 'Grandmother', 59),
+  ('a1000001-0000-4000-8000-000000000001', 'Esposo', 'Husband', 60),
+  ('a1000001-0000-4000-8000-000000000001', 'Esposa', 'Wife', 61),
+  ('a1000001-0000-4000-8000-000000000001', 'Familia', 'Family', 62),
+  ('a1000001-0000-4000-8000-000000000001', 'Amigo', 'Friend', 63),
+  ('a1000001-0000-4000-8000-000000000001', 'Amiga', 'Friend (female)', 64),
+  ('a1000001-0000-4000-8000-000000000001', 'Bebé', 'Baby', 65),
+  ('a1000001-0000-4000-8000-000000000001', 'Niño', 'Boy', 66),
+  ('a1000001-0000-4000-8000-000000000001', 'Agua', 'Water', 67),
+  ('a1000001-0000-4000-8000-000000000001', 'Pan', 'Bread', 68),
+  ('a1000001-0000-4000-8000-000000000001', 'Leche', 'Milk', 69),
+  ('a1000001-0000-4000-8000-000000000001', 'Café', 'Coffee', 70),
+  ('a1000001-0000-4000-8000-000000000001', 'Té', 'Tea', 71),
+  ('a1000001-0000-4000-8000-000000000001', 'Arroz', 'Rice', 72),
+  ('a1000001-0000-4000-8000-000000000001', 'Pollo', 'Chicken', 73),
+  ('a1000001-0000-4000-8000-000000000001', 'Pescado', 'Fish', 74),
+  ('a1000001-0000-4000-8000-000000000001', 'Fruta', 'Fruit', 75),
+  ('a1000001-0000-4000-8000-000000000001', 'Verdura', 'Vegetable', 76),
+  ('a1000001-0000-4000-8000-000000000001', 'Desayuno', 'Breakfast', 77),
+  ('a1000001-0000-4000-8000-000000000001', 'Almuerzo', 'Lunch', 78),
+  ('a1000001-0000-4000-8000-000000000001', 'Cena', 'Dinner', 79),
+  ('a1000001-0000-4000-8000-000000000001', 'Azúcar', 'Sugar', 80),
+  ('a1000001-0000-4000-8000-000000000001', 'Sal', 'Salt', 81),
+  ('a1000001-0000-4000-8000-000000000001', 'Queso', 'Cheese', 82),
+  ('a1000001-0000-4000-8000-000000000001', 'Huevo', 'Egg', 83),
+  ('a1000001-0000-4000-8000-000000000001', 'Manzana', 'Apple', 84),
+  ('a1000001-0000-4000-8000-000000000001', 'Naranja', 'Orange (fruit)', 85),
+  ('a1000001-0000-4000-8000-000000000001', 'Plátano', 'Banana', 86),
+  ('a1000001-0000-4000-8000-000000000001', 'Casa', 'House / Home', 87),
+  ('a1000001-0000-4000-8000-000000000001', 'Escuela', 'School', 88),
+  ('a1000001-0000-4000-8000-000000000001', 'Trabajo', 'Work', 89),
+  ('a1000001-0000-4000-8000-000000000001', 'Hospital', 'Hospital', 90),
+  ('a1000001-0000-4000-8000-000000000001', 'Tienda', 'Store', 91),
+  ('a1000001-0000-4000-8000-000000000001', 'Restaurante', 'Restaurant', 92),
+  ('a1000001-0000-4000-8000-000000000001', 'Aeropuerto', 'Airport', 93),
+  ('a1000001-0000-4000-8000-000000000001', 'Hotel', 'Hotel', 94),
+  ('a1000001-0000-4000-8000-000000000001', 'Playa', 'Beach', 95),
+  ('a1000001-0000-4000-8000-000000000001', 'Ciudad', 'City', 96),
+  ('a1000001-0000-4000-8000-000000000001', 'País', 'Country', 97),
+  ('a1000001-0000-4000-8000-000000000001', 'Calle', 'Street', 98),
+  ('a1000001-0000-4000-8000-000000000001', 'Mapa', 'Map', 99),
+  ('a1000001-0000-4000-8000-000000000001', 'Taxi', 'Taxi', 100),
+  ('a1000001-0000-4000-8000-000000000001', 'Tren', 'Train', 101),
+  ('a1000001-0000-4000-8000-000000000001', 'Autobús', 'Bus', 102),
+  ('a1000001-0000-4000-8000-000000000001', 'Boleto', 'Ticket', 103),
+  ('a1000001-0000-4000-8000-000000000001', 'Pasaporte', 'Passport', 104),
+  ('a1000001-0000-4000-8000-000000000001', 'Equipaje', 'Luggage', 105),
+  ('a1000001-0000-4000-8000-000000000001', '¿Dónde está...?', 'Where is...?', 106),
+  ('a1000001-0000-4000-8000-000000000001', 'Ser', 'To be (essential)', 107),
+  ('a1000001-0000-4000-8000-000000000001', 'Estar', 'To be (state)', 108),
+  ('a1000001-0000-4000-8000-000000000001', 'Tener', 'To have', 109),
+  ('a1000001-0000-4000-8000-000000000001', 'Hacer', 'To do / make', 110),
+  ('a1000001-0000-4000-8000-000000000001', 'Ir', 'To go', 111),
+  ('a1000001-0000-4000-8000-000000000001', 'Venir', 'To come', 112),
+  ('a1000001-0000-4000-8000-000000000001', 'Comer', 'To eat', 113),
+  ('a1000001-0000-4000-8000-000000000001', 'Beber', 'To drink', 114),
+  ('a1000001-0000-4000-8000-000000000001', 'Hablar', 'To speak', 115),
+  ('a1000001-0000-4000-8000-000000000001', 'Escuchar', 'To listen', 116),
+  ('a1000001-0000-4000-8000-000000000001', 'Ver', 'To see', 117),
+  ('a1000001-0000-4000-8000-000000000001', 'Leer', 'To read', 118),
+  ('a1000001-0000-4000-8000-000000000001', 'Escribir', 'To write', 119),
+  ('a1000001-0000-4000-8000-000000000001', 'Aprender', 'To learn', 120),
+  ('a1000001-0000-4000-8000-000000000001', 'Trabajar', 'To work', 121),
+  ('a1000001-0000-4000-8000-000000000001', 'Dormir', 'To sleep', 122),
+  ('a1000001-0000-4000-8000-000000000001', 'Comprar', 'To buy', 123),
+  ('a1000001-0000-4000-8000-000000000001', 'Necesitar', 'To need', 124),
+  ('a1000001-0000-4000-8000-000000000001', 'Querer', 'To want', 125),
+  ('a1000001-0000-4000-8000-000000000001', 'Poder', 'To be able to', 126),
+  ('a1000001-0000-4000-8000-000000000001', 'Hoy', 'Today', 127),
+  ('a1000001-0000-4000-8000-000000000001', 'Ayer', 'Yesterday', 128),
+  ('a1000001-0000-4000-8000-000000000001', 'Mañana', 'Tomorrow', 129),
+  ('a1000001-0000-4000-8000-000000000001', 'Ahora', 'Now', 130),
+  ('a1000001-0000-4000-8000-000000000001', 'Después', 'Later', 131),
+  ('a1000001-0000-4000-8000-000000000001', 'Antes', 'Before', 132),
+  ('a1000001-0000-4000-8000-000000000001', 'Siempre', 'Always', 133),
+  ('a1000001-0000-4000-8000-000000000001', 'Nunca', 'Never', 134),
+  ('a1000001-0000-4000-8000-000000000001', 'A veces', 'Sometimes', 135),
+  ('a1000001-0000-4000-8000-000000000001', 'Temprano', 'Early', 136),
+  ('a1000001-0000-4000-8000-000000000001', 'Tarde', 'Late', 137),
+  ('a1000001-0000-4000-8000-000000000001', 'Hora', 'Hour / Time', 138),
+  ('a1000001-0000-4000-8000-000000000001', 'Día', 'Day', 139),
+  ('a1000001-0000-4000-8000-000000000001', 'Semana', 'Week', 140),
+  ('a1000001-0000-4000-8000-000000000001', 'Mes', 'Month', 141),
+  ('a1000001-0000-4000-8000-000000000001', 'Año', 'Year', 142),
+  ('a1000001-0000-4000-8000-000000000001', 'Lunes', 'Monday', 143),
+  ('a1000001-0000-4000-8000-000000000001', 'Martes', 'Tuesday', 144),
+  ('a1000001-0000-4000-8000-000000000001', 'Miércoles', 'Wednesday', 145),
+  ('a1000001-0000-4000-8000-000000000001', 'Jueves', 'Thursday', 146),
+  ('a1000001-0000-4000-8000-000000000001', 'Viernes', 'Friday', 147),
+  ('a1000001-0000-4000-8000-000000000001', 'Sábado', 'Saturday', 148),
+  ('a1000001-0000-4000-8000-000000000001', 'Domingo', 'Sunday', 149),
+  ('a1000001-0000-4000-8000-000000000001', 'Feliz', 'Happy', 150),
+  ('a1000001-0000-4000-8000-000000000001', 'Triste', 'Sad', 151),
+  ('a1000001-0000-4000-8000-000000000001', 'Cansado', 'Tired', 152),
+  ('a1000001-0000-4000-8000-000000000001', 'Enojado', 'Angry', 153),
+  ('a1000001-0000-4000-8000-000000000001', 'Nervioso', 'Nervous', 154),
+  ('a1000001-0000-4000-8000-000000000001', 'Emocionado', 'Excited', 155),
+  ('a1000001-0000-4000-8000-000000000001', 'Preocupado', 'Worried', 156),
+  ('a1000001-0000-4000-8000-000000000001', 'Tranquilo', 'Calm', 157),
+  ('a1000001-0000-4000-8000-000000000001', 'Aburrido', 'Bored', 158),
+  ('a1000001-0000-4000-8000-000000000001', 'Sorprendido', 'Surprised', 159),
+  ('a1000001-0000-4000-8000-000000000001', 'Orgulloso', 'Proud', 160),
+  ('a1000001-0000-4000-8000-000000000001', 'Agradecido', 'Grateful', 161),
+  ('a1000001-0000-4000-8000-000000000001', 'Solo', 'Alone / Lonely', 162),
+  ('a1000001-0000-4000-8000-000000000001', 'Contento', 'Content', 163),
+  ('a1000001-0000-4000-8000-000000000001', 'Asustado', 'Scared', 164),
+  ('a1000001-0000-4000-8000-000000000001', 'Puerta', 'Door', 165),
+  ('a1000001-0000-4000-8000-000000000001', 'Ventana', 'Window', 166),
+  ('a1000001-0000-4000-8000-000000000001', 'Cama', 'Bed', 167),
+  ('a1000001-0000-4000-8000-000000000001', 'Mesa', 'Table', 168),
+  ('a1000001-0000-4000-8000-000000000001', 'Silla', 'Chair', 169),
+  ('a1000001-0000-4000-8000-000000000001', 'Cocina', 'Kitchen', 170),
+  ('a1000001-0000-4000-8000-000000000001', 'Baño', 'Bathroom', 171),
+  ('a1000001-0000-4000-8000-000000000001', 'Teléfono', 'Phone', 172),
+  ('a1000001-0000-4000-8000-000000000001', 'Llave', 'Key', 173),
+  ('a1000001-0000-4000-8000-000000000001', 'Dinero', 'Money', 174),
+  ('a1000001-0000-4000-8000-000000000001', 'Ropa', 'Clothes', 175),
+  ('a1000001-0000-4000-8000-000000000001', 'Zapato', 'Shoe', 176),
+  ('a1000001-0000-4000-8000-000000000001', 'Bolsa', 'Bag', 177),
+  ('a1000001-0000-4000-8000-000000000001', 'Regalo', 'Gift', 178),
+  ('a1000001-0000-4000-8000-000000000001', 'Fiesta', 'Party', 179)
+on conflict (deck_id, sort_order) do nothing;
+
+insert into public.flashcard_cards (deck_id, front_text, back_text, reading_text, sort_order) values
+  ('a1000002-0000-4000-8000-000000000002', 'こんにちは', 'Hello', 'Konnichiwa', 0),
+  ('a1000002-0000-4000-8000-000000000002', 'おはよう', 'Good morning', 'Ohayō', 1),
+  ('a1000002-0000-4000-8000-000000000002', 'こんばんは', 'Good evening', 'Konbanwa', 2),
+  ('a1000002-0000-4000-8000-000000000002', 'さようなら', 'Goodbye', 'Sayōnara', 3),
+  ('a1000002-0000-4000-8000-000000000002', 'ありがとう', 'Thank you', 'Arigatō', 4),
+  ('a1000002-0000-4000-8000-000000000002', 'すみません', 'Excuse me / Sorry', 'Sumimasen', 5),
+  ('a1000002-0000-4000-8000-000000000002', 'ごめんなさい', 'I''m sorry', 'Gomen nasai', 6),
+  ('a1000002-0000-4000-8000-000000000002', 'はい', 'Yes', 'Hai', 7),
+  ('a1000002-0000-4000-8000-000000000002', 'いいえ', 'No', 'Iie', 8),
+  ('a1000002-0000-4000-8000-000000000002', 'お元気ですか', 'How are you?', 'O-genki desu ka', 9),
+  ('a1000002-0000-4000-8000-000000000002', '元気です', 'I''m fine', 'Genki desu', 10),
+  ('a1000002-0000-4000-8000-000000000002', 'はじめまして', 'Nice to meet you', 'Hajimemashite', 11),
+  ('a1000002-0000-4000-8000-000000000002', '愛してる', 'I love you', 'Aishiteru', 12),
+  ('a1000002-0000-4000-8000-000000000002', '会いたい', 'I miss you / I want to see you', 'Aitai', 13),
+  ('a1000002-0000-4000-8000-000000000002', 'おやすみ', 'Good night', 'Oyasumi', 14),
+  ('a1000002-0000-4000-8000-000000000002', 'いただきます', 'Thanks for the meal (before eating)', 'Itadakimasu', 15),
+  ('a1000002-0000-4000-8000-000000000002', 'ごちそうさまでした', 'Thanks for the meal (after eating)', 'Gochisōsama deshita', 16),
+  ('a1000002-0000-4000-8000-000000000002', 'またね', 'See you later', 'Mata ne', 17),
+  ('a1000002-0000-4000-8000-000000000002', '一', 'One', 'Ichi', 18),
+  ('a1000002-0000-4000-8000-000000000002', '二', 'Two', 'Ni', 19),
+  ('a1000002-0000-4000-8000-000000000002', '三', 'Three', 'San', 20),
+  ('a1000002-0000-4000-8000-000000000002', '四', 'Four', 'Shi/Yon', 21),
+  ('a1000002-0000-4000-8000-000000000002', '五', 'Five', 'Go', 22),
+  ('a1000002-0000-4000-8000-000000000002', '六', 'Six', 'Roku', 23),
+  ('a1000002-0000-4000-8000-000000000002', '七', 'Seven', 'Nana/Shichi', 24),
+  ('a1000002-0000-4000-8000-000000000002', '八', 'Eight', 'Hachi', 25),
+  ('a1000002-0000-4000-8000-000000000002', '九', 'Nine', 'Kyuu/Ku', 26),
+  ('a1000002-0000-4000-8000-000000000002', '十', 'Ten', 'Juu', 27),
+  ('a1000002-0000-4000-8000-000000000002', '二十', 'Twenty', 'Nijuu', 28),
+  ('a1000002-0000-4000-8000-000000000002', '三十', 'Thirty', 'Sanjuu', 29),
+  ('a1000002-0000-4000-8000-000000000002', '百', 'Hundred', 'Hyaku', 30),
+  ('a1000002-0000-4000-8000-000000000002', '千', 'Thousand', 'Sen', 31),
+  ('a1000002-0000-4000-8000-000000000002', '万', 'Ten thousand', 'Man', 32),
+  ('a1000002-0000-4000-8000-000000000002', '赤', 'Red', 'Aka', 33),
+  ('a1000002-0000-4000-8000-000000000002', '青', 'Blue', 'Ao', 34),
+  ('a1000002-0000-4000-8000-000000000002', '緑', 'Green', 'Midori', 35),
+  ('a1000002-0000-4000-8000-000000000002', '黄色', 'Yellow', 'Kiiro', 36),
+  ('a1000002-0000-4000-8000-000000000002', '黒', 'Black', 'Kuro', 37),
+  ('a1000002-0000-4000-8000-000000000002', '白', 'White', 'Shiro', 38),
+  ('a1000002-0000-4000-8000-000000000002', 'ピンク', 'Pink', 'Pinku', 39),
+  ('a1000002-0000-4000-8000-000000000002', '紫', 'Purple', 'Murasaki', 40),
+  ('a1000002-0000-4000-8000-000000000002', 'オレンジ', 'Orange', 'Orenji', 41),
+  ('a1000002-0000-4000-8000-000000000002', '灰色', 'Gray', 'Haiiro', 42),
+  ('a1000002-0000-4000-8000-000000000002', '母', 'Mother', 'Haha', 43),
+  ('a1000002-0000-4000-8000-000000000002', '父', 'Father', 'Chichi', 44),
+  ('a1000002-0000-4000-8000-000000000002', '兄', 'Older brother', 'Ani', 45),
+  ('a1000002-0000-4000-8000-000000000002', '姉', 'Older sister', 'Ane', 46),
+  ('a1000002-0000-4000-8000-000000000002', '弟', 'Younger brother', 'Otouto', 47),
+  ('a1000002-0000-4000-8000-000000000002', '妹', 'Younger sister', 'Imouto', 48),
+  ('a1000002-0000-4000-8000-000000000002', '息子', 'Son', 'Musuko', 49),
+  ('a1000002-0000-4000-8000-000000000002', '娘', 'Daughter', 'Musume', 50),
+  ('a1000002-0000-4000-8000-000000000002', '祖父', 'Grandfather', 'Sofu', 51),
+  ('a1000002-0000-4000-8000-000000000002', '祖母', 'Grandmother', 'Sobo', 52),
+  ('a1000002-0000-4000-8000-000000000002', '夫', 'Husband', 'Otto', 53),
+  ('a1000002-0000-4000-8000-000000000002', '妻', 'Wife', 'Tsuma', 54),
+  ('a1000002-0000-4000-8000-000000000002', '家族', 'Family', 'Kazoku', 55),
+  ('a1000002-0000-4000-8000-000000000002', '友達', 'Friend', 'Tomodachi', 56),
+  ('a1000002-0000-4000-8000-000000000002', '赤ちゃん', 'Baby', 'Akachan', 57),
+  ('a1000002-0000-4000-8000-000000000002', '子供', 'Child', 'Kodomo', 58),
+  ('a1000002-0000-4000-8000-000000000002', '水', 'Water', 'Mizu', 59),
+  ('a1000002-0000-4000-8000-000000000002', 'パン', 'Bread', 'Pan', 60),
+  ('a1000002-0000-4000-8000-000000000002', '牛乳', 'Milk', 'Gyuunyuu', 61),
+  ('a1000002-0000-4000-8000-000000000002', 'コーヒー', 'Coffee', 'Koohii', 62),
+  ('a1000002-0000-4000-8000-000000000002', 'お茶', 'Tea', 'Ocha', 63),
+  ('a1000002-0000-4000-8000-000000000002', 'ご飯', 'Rice / meal', 'Gohan', 64),
+  ('a1000002-0000-4000-8000-000000000002', '鶏肉', 'Chicken', 'Toriniku', 65),
+  ('a1000002-0000-4000-8000-000000000002', '魚', 'Fish', 'Sakana', 66),
+  ('a1000002-0000-4000-8000-000000000002', '果物', 'Fruit', 'Kudamono', 67),
+  ('a1000002-0000-4000-8000-000000000002', '野菜', 'Vegetable', 'Yasai', 68),
+  ('a1000002-0000-4000-8000-000000000002', '朝ごはん', 'Breakfast', 'Asagohan', 69),
+  ('a1000002-0000-4000-8000-000000000002', '昼ごはん', 'Lunch', 'Hirugohan', 70),
+  ('a1000002-0000-4000-8000-000000000002', '晩ごはん', 'Dinner', 'Bangohan', 71),
+  ('a1000002-0000-4000-8000-000000000002', '砂糖', 'Sugar', 'Satou', 72),
+  ('a1000002-0000-4000-8000-000000000002', '塩', 'Salt', 'Shio', 73),
+  ('a1000002-0000-4000-8000-000000000002', 'チーズ', 'Cheese', 'Chiizu', 74),
+  ('a1000002-0000-4000-8000-000000000002', '卵', 'Egg', 'Tamago', 75),
+  ('a1000002-0000-4000-8000-000000000002', 'りんご', 'Apple', 'Ringo', 76),
+  ('a1000002-0000-4000-8000-000000000002', 'オレンジ', 'Orange', 'Orenji', 77),
+  ('a1000002-0000-4000-8000-000000000002', 'バナナ', 'Banana', 'Banana', 78),
+  ('a1000002-0000-4000-8000-000000000002', '家', 'House / Home', 'Ie', 79),
+  ('a1000002-0000-4000-8000-000000000002', '学校', 'School', 'Gakkou', 80),
+  ('a1000002-0000-4000-8000-000000000002', '仕事', 'Work', 'Shigoto', 81),
+  ('a1000002-0000-4000-8000-000000000002', '病院', 'Hospital', 'Byouin', 82),
+  ('a1000002-0000-4000-8000-000000000002', '店', 'Store', 'Mise', 83),
+  ('a1000002-0000-4000-8000-000000000002', 'レストラン', 'Restaurant', 'Resutoran', 84),
+  ('a1000002-0000-4000-8000-000000000002', '空港', 'Airport', 'Kuukou', 85),
+  ('a1000002-0000-4000-8000-000000000002', 'ホテル', 'Hotel', 'Hoteru', 86),
+  ('a1000002-0000-4000-8000-000000000002', '海', 'Sea / beach', 'Umi', 87),
+  ('a1000002-0000-4000-8000-000000000002', '街', 'City / town', 'Machi', 88),
+  ('a1000002-0000-4000-8000-000000000002', '国', 'Country', 'Kuni', 89),
+  ('a1000002-0000-4000-8000-000000000002', '道', 'Road', 'Michi', 90),
+  ('a1000002-0000-4000-8000-000000000002', '地図', 'Map', 'Chizu', 91),
+  ('a1000002-0000-4000-8000-000000000002', 'タクシー', 'Taxi', 'Takushii', 92),
+  ('a1000002-0000-4000-8000-000000000002', '電車', 'Train', 'Densha', 93),
+  ('a1000002-0000-4000-8000-000000000002', 'バス', 'Bus', 'Basu', 94),
+  ('a1000002-0000-4000-8000-000000000002', '切符', 'Ticket', 'Kippu', 95),
+  ('a1000002-0000-4000-8000-000000000002', 'パスポート', 'Passport', 'Pasupooto', 96),
+  ('a1000002-0000-4000-8000-000000000002', '荷物', 'Luggage', 'Nimotsu', 97),
+  ('a1000002-0000-4000-8000-000000000002', 'どこですか', 'Where is it?', 'Doko desu ka', 98),
+  ('a1000002-0000-4000-8000-000000000002', '食べる', 'To eat', 'Taberu', 99),
+  ('a1000002-0000-4000-8000-000000000002', '飲む', 'To drink', 'Nomu', 100),
+  ('a1000002-0000-4000-8000-000000000002', '行く', 'To go', 'Iku', 101),
+  ('a1000002-0000-4000-8000-000000000002', '来る', 'To come', 'Kuru', 102),
+  ('a1000002-0000-4000-8000-000000000002', '見る', 'To see', 'Miru', 103),
+  ('a1000002-0000-4000-8000-000000000002', '聞く', 'To listen / ask', 'Kiku', 104),
+  ('a1000002-0000-4000-8000-000000000002', '話す', 'To speak', 'Hanasu', 105),
+  ('a1000002-0000-4000-8000-000000000002', '読む', 'To read', 'Yomu', 106),
+  ('a1000002-0000-4000-8000-000000000002', '書く', 'To write', 'Kaku', 107),
+  ('a1000002-0000-4000-8000-000000000002', '学ぶ', 'To learn', 'Manabu', 108),
+  ('a1000002-0000-4000-8000-000000000002', '働く', 'To work', 'Hataraku', 109),
+  ('a1000002-0000-4000-8000-000000000002', '寝る', 'To sleep', 'Neru', 110),
+  ('a1000002-0000-4000-8000-000000000002', '買う', 'To buy', 'Kau', 111),
+  ('a1000002-0000-4000-8000-000000000002', '必要', 'Necessary / need', 'Hitsuyou', 112),
+  ('a1000002-0000-4000-8000-000000000002', '欲しい', 'Want', 'Hoshii', 113),
+  ('a1000002-0000-4000-8000-000000000002', 'できる', 'Can do', 'Dekiru', 114),
+  ('a1000002-0000-4000-8000-000000000002', 'する', 'To do', 'Suru', 115),
+  ('a1000002-0000-4000-8000-000000000002', 'ある', 'To exist (things)', 'Aru', 116),
+  ('a1000002-0000-4000-8000-000000000002', 'いる', 'To exist (people)', 'Iru', 117),
+  ('a1000002-0000-4000-8000-000000000002', '分かる', 'To understand', 'Wakaru', 118),
+  ('a1000002-0000-4000-8000-000000000002', '今日', 'Today', 'Kyou', 119),
+  ('a1000002-0000-4000-8000-000000000002', '昨日', 'Yesterday', 'Kinou', 120),
+  ('a1000002-0000-4000-8000-000000000002', '明日', 'Tomorrow', 'Ashita', 121),
+  ('a1000002-0000-4000-8000-000000000002', '今', 'Now', 'Ima', 122),
+  ('a1000002-0000-4000-8000-000000000002', '後で', 'Later', 'Ato de', 123),
+  ('a1000002-0000-4000-8000-000000000002', '前', 'Before', 'Mae', 124),
+  ('a1000002-0000-4000-8000-000000000002', 'いつも', 'Always', 'Itsumo', 125),
+  ('a1000002-0000-4000-8000-000000000002', '決して', 'Never', 'Kesshite', 126),
+  ('a1000002-0000-4000-8000-000000000002', '時々', 'Sometimes', 'Tokidoki', 127),
+  ('a1000002-0000-4000-8000-000000000002', '早い', 'Early', 'Hayai', 128),
+  ('a1000002-0000-4000-8000-000000000002', '遅い', 'Late', 'Osoi', 129),
+  ('a1000002-0000-4000-8000-000000000002', '時間', 'Time', 'Jikan', 130),
+  ('a1000002-0000-4000-8000-000000000002', '日', 'Day', 'Hi', 131),
+  ('a1000002-0000-4000-8000-000000000002', '週', 'Week', 'Shuu', 132),
+  ('a1000002-0000-4000-8000-000000000002', '月', 'Month', 'Tsuki', 133),
+  ('a1000002-0000-4000-8000-000000000002', '年', 'Year', 'Toshi', 134),
+  ('a1000002-0000-4000-8000-000000000002', '月曜日', 'Monday', 'Getsuyoubi', 135),
+  ('a1000002-0000-4000-8000-000000000002', '火曜日', 'Tuesday', 'Kayoubi', 136),
+  ('a1000002-0000-4000-8000-000000000002', '水曜日', 'Wednesday', 'Suiyoubi', 137),
+  ('a1000002-0000-4000-8000-000000000002', '木曜日', 'Thursday', 'Mokuyoubi', 138),
+  ('a1000002-0000-4000-8000-000000000002', '金曜日', 'Friday', 'Kinyoubi', 139),
+  ('a1000002-0000-4000-8000-000000000002', '土曜日', 'Saturday', 'Doyoubi', 140),
+  ('a1000002-0000-4000-8000-000000000002', '日曜日', 'Sunday', 'Nichiyoubi', 141),
+  ('a1000002-0000-4000-8000-000000000002', '嬉しい', 'Happy', 'Ureshii', 142),
+  ('a1000002-0000-4000-8000-000000000002', '悲しい', 'Sad', 'Kanashii', 143),
+  ('a1000002-0000-4000-8000-000000000002', '疲れた', 'Tired', 'Tsukareta', 144),
+  ('a1000002-0000-4000-8000-000000000002', '怒っている', 'Angry', 'Okotte iru', 145),
+  ('a1000002-0000-4000-8000-000000000002', '緊張', 'Nervous', 'Kinchou', 146),
+  ('a1000002-0000-4000-8000-000000000002', 'ワクワク', 'Excited', 'Wakuwaku', 147),
+  ('a1000002-0000-4000-8000-000000000002', '心配', 'Worried', 'Shinpai', 148),
+  ('a1000002-0000-4000-8000-000000000002', '落ち着いた', 'Calm', 'Ochitsuita', 149),
+  ('a1000002-0000-4000-8000-000000000002', '退屈', 'Bored', 'Taikutsu', 150),
+  ('a1000002-0000-4000-8000-000000000002', '驚いた', 'Surprised', 'Odoroita', 151),
+  ('a1000002-0000-4000-8000-000000000002', '誇らしい', 'Proud', 'Hokorashii', 152),
+  ('a1000002-0000-4000-8000-000000000002', '感謝', 'Gratitude', 'Kansha', 153),
+  ('a1000002-0000-4000-8000-000000000002', '寂しい', 'Lonely', 'Sabishii', 154),
+  ('a1000002-0000-4000-8000-000000000002', '満足', 'Satisfied', 'Manzoku', 155),
+  ('a1000002-0000-4000-8000-000000000002', '怖い', 'Scary / scared', 'Kowai', 156),
+  ('a1000002-0000-4000-8000-000000000002', 'ドア', 'Door', 'Doa', 157),
+  ('a1000002-0000-4000-8000-000000000002', '窓', 'Window', 'Mado', 158),
+  ('a1000002-0000-4000-8000-000000000002', 'ベッド', 'Bed', 'Beddo', 159),
+  ('a1000002-0000-4000-8000-000000000002', 'テーブル', 'Table', 'Teeburu', 160),
+  ('a1000002-0000-4000-8000-000000000002', '椅子', 'Chair', 'Isu', 161),
+  ('a1000002-0000-4000-8000-000000000002', 'キッチン', 'Kitchen', 'Kicchin', 162),
+  ('a1000002-0000-4000-8000-000000000002', 'お風呂', 'Bath', 'Ofuro', 163),
+  ('a1000002-0000-4000-8000-000000000002', '電話', 'Phone', 'Denwa', 164),
+  ('a1000002-0000-4000-8000-000000000002', '鍵', 'Key', 'Kagi', 165),
+  ('a1000002-0000-4000-8000-000000000002', 'お金', 'Money', 'Okane', 166),
+  ('a1000002-0000-4000-8000-000000000002', '服', 'Clothes', 'Fuku', 167),
+  ('a1000002-0000-4000-8000-000000000002', '靴', 'Shoes', 'Kutsu', 168),
+  ('a1000002-0000-4000-8000-000000000002', 'かばん', 'Bag', 'Kaban', 169),
+  ('a1000002-0000-4000-8000-000000000002', 'プレゼント', 'Gift', 'Purezento', 170),
+  ('a1000002-0000-4000-8000-000000000002', 'パーティー', 'Party', 'Paatii', 171),
+  ('a1000002-0000-4000-8000-000000000002', '太陽', 'Sun', 'Taiyou', 172),
+  ('a1000002-0000-4000-8000-000000000002', '月', 'Moon', 'Tsuki', 173),
+  ('a1000002-0000-4000-8000-000000000002', '雨', 'Rain', 'Ame', 174),
+  ('a1000002-0000-4000-8000-000000000002', '雪', 'Snow', 'Yuki', 175),
+  ('a1000002-0000-4000-8000-000000000002', '風', 'Wind', 'Kaze', 176),
+  ('a1000002-0000-4000-8000-000000000002', '暑い', 'Hot', 'Atsui', 177),
+  ('a1000002-0000-4000-8000-000000000002', '寒い', 'Cold', 'Samui', 178),
+  ('a1000002-0000-4000-8000-000000000002', '空', 'Sky', 'Sora', 179)
+on conflict (deck_id, sort_order) do nothing;
+
+-- per-user learning progress (mastery, starred, review count) — mirrors iOS's FlashcardProgress,
+-- which treats local device state as authoritative and this table as best-effort sync.
+create table if not exists public.flashcard_progress (
+  user_id uuid not null references public.profiles (id) on delete cascade,
+  card_id uuid not null references public.flashcard_cards (id) on delete cascade,
+  mastery text not null default 'new' check (mastery in ('new', 'practice', 'solid')),
+  is_starred boolean not null default false,
+  review_count int not null default 0,
+  last_reviewed_at timestamptz,
+  updated_at timestamptz not null default now(),
+  primary key (user_id, card_id)
+);
+
+create index if not exists flashcard_progress_user_idx
+  on public.flashcard_progress (user_id);
+
+alter table public.flashcard_progress enable row level security;
+
+drop policy if exists "flashcard_progress_select_own" on public.flashcard_progress;
+create policy "flashcard_progress_select_own" on public.flashcard_progress
+  for select to authenticated using (user_id = auth.uid());
+drop policy if exists "flashcard_progress_insert_own" on public.flashcard_progress;
+create policy "flashcard_progress_insert_own" on public.flashcard_progress
+  for insert to authenticated with check (user_id = auth.uid());
+drop policy if exists "flashcard_progress_update_own" on public.flashcard_progress;
+create policy "flashcard_progress_update_own" on public.flashcard_progress
+  for update to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid());
+drop policy if exists "flashcard_progress_delete_own" on public.flashcard_progress;
+create policy "flashcard_progress_delete_own" on public.flashcard_progress
+  for delete to authenticated using (user_id = auth.uid());
+
 
 -- ============ storage: private buckets + signed URLs + path-based ownership ============
 -- Note: storage.objects/storage.buckets live in the `storage` schema, not `public` — if you ever

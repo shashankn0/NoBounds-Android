@@ -1,10 +1,12 @@
 import { supabase } from '@/lib/supabase';
 
-export type TimelineItemType = 'memory' | 'photo' | 'prompt' | 'milestone';
+// real backend has a 5th type, 'gratitude' (solo_prompt_entries), that our earlier local
+// reimplementation of this rpc didn't have
+export type TimelineItemType = 'memory' | 'gratitude' | 'photo' | 'prompt' | 'milestone';
 
 export type TimelineFilter = 'all' | TimelineItemType | 'favorites';
 
-// one row from the unified timeline_feed() rpc
+// one row from the real backend's timeline_feed() rpc
 export type TimelineFeedItem = {
   item_type: TimelineItemType;
   item_id: string;
@@ -14,12 +16,14 @@ export type TimelineFeedItem = {
   entity_type: TimelineItemType;
   entity_id: string;
   is_favorite: boolean;
+  // per-type extra fields — e.g. photo carries {storage_path, mood_tag, capture_source, ...}
+  metadata: Record<string, unknown>;
 };
 
 const PAGE_SIZE = 20;
 
-// mirrors ios's timelineviewmodel.loadpage: filter -> rpc params, milestone-exclusion handled
-// server-side (see timeline_feed() in supabase/schema.sql).
+// calls the real backend's timeline_feed() rpc directly (not a local reimplementation) —
+// filter -> rpc params, milestone-exclusion and full-text search are handled server-side there
 export async function fetchTimelineFeed(options: {
   filter: TimelineFilter;
   search?: string;
@@ -41,6 +45,43 @@ export async function fetchTimelineFeed(options: {
   });
   if (error) throw error;
   return (data as TimelineFeedItem[] | null) ?? [];
+}
+
+// real backend's timeline_feed() always returns a generic title ('Presence photo', etc) —
+// the "Bound - September 12th, 2026 - 10:27 a.m." style header is purely client-side, computed
+// the same way ios's TimelineRowDisplayFormatter.headerLine(for:) does, not stored anywhere
+const ROW_LABEL: Record<TimelineItemType, string> = {
+  memory: 'Memory',
+  gratitude: 'Gratitude',
+  photo: 'Photo',
+  prompt: 'Prompt',
+  milestone: 'Milestone',
+};
+
+function rowLabel(item: TimelineFeedItem): string {
+  if (item.item_type !== 'photo') return ROW_LABEL[item.item_type];
+  // camera captures get the "Bound" brand label; library-picked photos stay plain "Photo"
+  return item.metadata.capture_source === 'library' ? 'Photo' : 'Bound';
+}
+
+function ordinalDateString(date: Date): string {
+  const day = date.getDate();
+  const suffix = day >= 11 && day <= 13 ? 'th' : ['th', 'st', 'nd', 'rd'][day % 10] ?? 'th';
+  const month = date.toLocaleDateString(undefined, { month: 'long' });
+  return `${month} ${day}${suffix}, ${date.getFullYear()}`;
+}
+
+function timeString(date: Date): string {
+  const hour24 = date.getHours();
+  const hour12 = hour24 % 12 === 0 ? 12 : hour24 % 12;
+  const minute = date.getMinutes().toString().padStart(2, '0');
+  const period = hour24 < 12 ? 'a.m.' : 'p.m.';
+  return `${hour12}:${minute} ${period}`;
+}
+
+export function timelineHeaderLine(item: TimelineFeedItem): string {
+  const date = new Date(item.occurred_at);
+  return `${rowLabel(item)} - ${ordinalDateString(date)} - ${timeString(date)}`;
 }
 
 // stars/unstars any item type — one generic table backs all four

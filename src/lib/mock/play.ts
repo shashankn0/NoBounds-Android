@@ -11,23 +11,8 @@ export type MiniGame = {
 // (ios icons: grid, character.book.closed, character.ja, pencil.and.scribble — japanese and the
 // pencil glyph don't exist in ionicons, so language-outline/brush-outline stand in)
 export const mockGames: MiniGame[] = [
-  { id: 'tic-tac-toe', title: 'Tic-Tac-Toe', subtitle: 'Classic 3×3', icon: 'grid-outline' },
-  { id: 'spanish-flashcards', title: 'Spanish Flashcards', subtitle: '180 words & phrases', icon: 'book-outline' },
-  { id: 'japanese-flashcards', title: 'Japanese Flashcards', subtitle: '180 words & phrases', icon: 'language-outline' },
-  { id: 'draw-and-guess', title: 'Draw & Guess', subtitle: 'Sketch it, pass it, guess it', icon: 'brush-outline' },
+  { id: 'tic-tac-toe', title: 'Tic-Tac-Toe', subtitle: 'Classic 3×3', icon: 'grid' },
+  { id: 'spanish-flashcards', title: 'Spanish Flashcards', subtitle: '180 words & phrases', icon: 'book' },
+  { id: 'japanese-flashcards', title: 'Japanese Flashcards', subtitle: '180 words & phrases', icon: 'language' },
+  { id: 'draw-and-guess', title: 'Draw & Guess', subtitle: 'Sketch it, pass it, guess it', icon: 'brush' },
 ];
-
-type Flashcard = { front: string; back: string };
-
-export const mockFlashcardDecks: Record<'spanish' | 'japanese', Flashcard[]> = {
-  spanish: [
-    { front: 'Hola', back: 'Hello' },
-    { front: 'Te extraño', back: 'I miss you' },
-    { front: 'Buenas noches', back: 'Good night' },
-  ],
-  japanese: [
-    { front: 'こんにちは', back: 'Hello' },
-    { front: '会いたい', back: 'I miss you' },
-    { front: 'おやすみ', back: 'Good night' },
-  ],
-};

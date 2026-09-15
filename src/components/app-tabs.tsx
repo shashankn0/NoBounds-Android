@@ -10,8 +10,8 @@ import { useTheme } from '@/hooks/use-theme';
 type IconName = keyof typeof Ionicons.glyphMap;
 
 // matches maintab order + sf symbols in ../nobounds/nobounds/core/navigation: home, prompt, photos, play, timeline.
-// ios always renders the filled glyph (selection is shown via the circular badge + color, not
-// an outline/filled swap), so there's a single icon per tab here.
+// ios always renders the filled glyph (selection is shown via the badge + tint, not an
+// outline/filled swap), so there's a single icon per tab here.
 const TABS: { name: string; href: Href; label: string; icon: IconName }[] = [
   { name: 'home', href: '/', label: 'Home', icon: 'home' },
   { name: 'prompt', href: '/prompt', label: 'Prompt', icon: 'chatbubbles' },
@@ -45,22 +45,23 @@ function TabButton({
   ...props
 }: TabTriggerSlotProps & { icon: IconName; label: string }) {
   const theme = useTheme();
-  const labelColor = isFocused ? theme.tabBarItemSelected : theme.tabBarItemUnselected;
+  const itemColor = isFocused ? theme.tabBarItemSelected : theme.tabBarItemUnselected;
 
-  // one tab's icon + label, circle badge shows only when selected
+  // ios wraps the icon *and* its label in one rounded badge, tinting both rather than
+  // filling the badge with the accent — keeps the group tight and the icon large
   return (
     <Pressable {...props} style={styles.tabButton}>
-      <View style={[styles.badge, { backgroundColor: isFocused ? theme.accentMuted : 'transparent' }]}>
-        <Ionicons name={icon} size={22} color={isFocused ? theme.textOnAccent : theme.tabBarItemUnselected} />
+      <View style={[styles.badge, { backgroundColor: isFocused ? theme.surface : 'transparent' }]}>
+        <Ionicons name={icon} size={34} color={itemColor} />
+        <ThemedText
+          type="small"
+          style={[styles.label, { color: itemColor }]}
+          numberOfLines={1}
+          adjustsFontSizeToFit
+          minimumFontScale={0.8}>
+          {label}
+        </ThemedText>
       </View>
-      <ThemedText
-        type="small"
-        style={[styles.label, { color: labelColor }]}
-        numberOfLines={1}
-        adjustsFontSizeToFit
-        minimumFontScale={0.8}>
-        {label}
-      </ThemedText>
     </Pressable>
   );
 }
@@ -70,7 +71,9 @@ function CustomTabList(props: { children?: React.ReactNode }) {
   const insets = useSafeAreaInsets();
 
   return (
-    <View style={[styles.tabListContainer, { paddingBottom: insets.bottom || 12 }]}>
+    // the +8 keeps the pill off android's own nav bar (gesture pill or 3-button row) rather
+    // than letting it sit flush against it
+    <View style={[styles.tabListContainer, { paddingBottom: (insets.bottom || 12) + 8 }]}>
       <View style={[styles.innerContainer, { backgroundColor: theme.tabBarBackground, borderColor: theme.border }]}>
         {props.children}
       </View>
@@ -84,7 +87,7 @@ const styles = StyleSheet.create({
     bottom: 0,
     width: '100%',
     paddingHorizontal: 10,
-    paddingTop: 8,
+    paddingTop: 6,
     alignItems: 'center',
   },
   innerContainer: {
@@ -95,7 +98,7 @@ const styles = StyleSheet.create({
     // capsule (matches the pill buttons/search bar elsewhere), regardless of content height.
     borderRadius: 999,
     borderWidth: 1,
-    paddingVertical: 10,
+    paddingVertical: 3,
     paddingHorizontal: 4,
     width: '100%',
     maxWidth: 480,
@@ -105,18 +108,19 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     elevation: 4,
   },
-  tabButton: { flex: 1, alignItems: 'center', gap: 3 },
+  tabButton: { flex: 1 },
   badge: {
-    width: 40,
-    height: 40,
+    alignSelf: 'stretch',
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 999,
+    paddingVertical: 2,
+    paddingHorizontal: 4,
+    borderRadius: 22,
     // android-only quirk: a view's backgroundColor going from absent to present on an
     // already-mounted node can render square instead of picking up borderRadius on that
-    // update — see the isFocused ? accentMuted : 'transparent' below (always-present value,
-    // never an added/removed key) which is the real fix. overflow:'hidden' is belt-and-suspenders.
+    // update — the isFocused ? surface : 'transparent' above (always-present value, never an
+    // added/removed key) is the real fix. overflow:'hidden' is belt-and-suspenders.
     overflow: 'hidden',
   },
-  label: { fontSize: 11, fontWeight: '600' },
+  label: { fontSize: 12, lineHeight: 13, fontWeight: '600' },
 });

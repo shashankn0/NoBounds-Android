@@ -18,7 +18,7 @@ export function NBListRow({ icon, title, onPress, trailing }: NBListRowProps) {
 
   return (
     <Pressable onPress={onPress} style={({ pressed }) => [styles.row, pressed && { opacity: 0.7 }]}>
-      <Ionicons name={icon} size={20} color={theme.accent} style={styles.icon} />
+      <Ionicons name={icon} size={22} color={theme.accent} style={styles.icon} />
       <ThemedText type="default" style={styles.title}>
         {title}
       </ThemedText>

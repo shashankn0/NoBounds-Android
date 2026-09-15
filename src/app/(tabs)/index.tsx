@@ -1,22 +1,25 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Image, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { CyclePhaseBar } from '@/components/cycle-phase-bar';
 import { NBCard } from '@/components/nb-card';
 import { NBPrimaryButton, NBSecondaryButton } from '@/components/nb-button';
+import { PetPreviewRow } from '@/components/pet-preview-row';
 import { ScreenHeader } from '@/components/screen-header';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { BottomTabInset } from '@/constants/theme';
 import { useSession } from '@/contexts/session-context';
 import { useTheme } from '@/hooks/use-theme';
+import { calculateCyclePhase, fetchCycleProfile, fetchPeriodLogs, type CyclePhaseSnapshot } from '@/lib/cycle-tracking';
+import type { CycleTrackingProfile, PresencePhoto, UserPet } from '@/lib/database-types';
 import { fetchHabits, fetchTodaysCompletions, toggleHabitToday, type Habit, type HabitCompletion } from '@/lib/habits';
-import { mockDateIdeas } from '@/lib/mock/date-ideas';
-import { mockGiftIdeas } from '@/lib/mock/gifts';
-import { mockPet, petMoodEmoji } from '@/lib/mock/pet';
-import { mockWeeklyShare } from '@/lib/mock/weekly-share';
+import { fetchPets } from '@/lib/pets';
+import { getSignedUrl } from '@/lib/storage';
+import { supabase } from '@/lib/supabase';
 
 export default function HomeScreen() {
   const theme = useTheme();
@@ -24,6 +27,13 @@ export default function HomeScreen() {
   const { session, couple } = useSession();
   const [habits, setHabits] = useState<Habit[]>([]);
   const [completions, setCompletions] = useState<HabitCompletion[]>([]);
+  const [myPet, setMyPet] = useState<UserPet | null>(null);
+  const [partnerPet, setPartnerPet] = useState<UserPet | null>(null);
+  const [lastBound, setLastBound] = useState<PresencePhoto | null>(null);
+  const [lastBoundUrl, setLastBoundUrl] = useState<string | null>(null);
+  const [cycleProfile, setCycleProfile] = useState<CycleTrackingProfile | null>(null);
+  const [cyclePhase, setCyclePhase] = useState<CyclePhaseSnapshot | null>(null);
+  const [cycleOptingIn, setCycleOptingIn] = useState(false);
 
   // works solo pre-pairing and shows shared habits once merged
   const loadHabits = useCallback(async () => {
@@ -32,15 +42,50 @@ export default function HomeScreen() {
       setHabits(habitRows);
       setCompletions(completionRows);
     } catch {
-      // home's habit card is a summary — calendar shows the real error state
+      // home's habit card is a summary — timeline shows the real error state
     }
   }, []);
+
+  // these cards are all couple-scoped — nothing to load solo
+  const loadExtras = useCallback(async () => {
+    if (!couple || !session) return;
+    try {
+      const [pets, { data: photoRows }, cycleProfileRow] = await Promise.all([
+        fetchPets(couple.id),
+        supabase
+          .from('presence_photos')
+          .select('*')
+          .eq('couple_id', couple.id)
+          .neq('user_id', session.user.id)
+          .order('created_at', { ascending: false })
+          .limit(1),
+        fetchCycleProfile(),
+      ]);
+      setMyPet(pets.find((p) => p.user_id === session.user.id) ?? null);
+      setPartnerPet(pets.find((p) => p.user_id !== session.user.id) ?? null);
+
+      const latest = ((photoRows as PresencePhoto[] | null) ?? [])[0] ?? null;
+      setLastBound(latest);
+      setLastBoundUrl(latest ? await getSignedUrl('presence', latest.storage_path) : null);
+
+      setCycleProfile(cycleProfileRow);
+      if (cycleProfileRow) {
+        const periodLogs = await fetchPeriodLogs();
+        setCyclePhase(
+          calculateCyclePhase(new Date(), periodLogs, cycleProfileRow.avg_cycle_length_days, cycleProfileRow.avg_period_length_days)
+        );
+      }
+    } catch {
+      // these are summary cards — each dedicated screen shows the real error state
+    }
+  }, [couple, session]);
 
   // refetch every time the tab regains focus, not just on mount
   useFocusEffect(
     useCallback(() => {
       loadHabits();
-    }, [loadHabits])
+      loadExtras();
+    }, [loadHabits, loadExtras])
   );
 
   async function onToggle(habit: Habit, currentlyDone: boolean) {
@@ -48,9 +93,22 @@ export default function HomeScreen() {
     await loadHabits();
   }
 
+  // mirrors cycletrackinghomesection.swift's opt-in card — sharing permissions default all-off
+  async function onEnableCycleSharing() {
+    if (!session || !couple) return;
+    setCycleOptingIn(true);
+    try {
+      await supabase.from('cycle_tracking_profiles').insert({ user_id: session.user.id, couple_id: couple.id });
+      await supabase.from('cycle_sharing_permissions').insert({ user_id: session.user.id });
+      await loadExtras();
+    } finally {
+      setCycleOptingIn(false);
+    }
+  }
+
   return (
     <ThemedView style={{ flex: 1 }}>
-      <ScreenHeader centerLabel={couple ? 'Paired with Partner 💛' : undefined} />
+      <ScreenHeader showPairing />
       <ScrollView contentContainerStyle={[styles.container, { paddingBottom: insets.bottom + BottomTabInset }]}>
         {!couple ? (
           <NBCard>
@@ -63,118 +121,121 @@ export default function HomeScreen() {
             </View>
           </NBCard>
         ) : (
-          <>
-            <NBCard>
-              <ThemedText type="title">Today&apos;s prompt</ThemedText>
+          <NBCard>
+            <ThemedText type="title">{couple.partnerName?.trim() || 'Partner'}&apos;s Last Bound</ThemedText>
+            {lastBound && lastBoundUrl ? (
+              <>
+                <Pressable onPress={() => router.push({ pathname: '/photo-detail', params: { photoId: lastBound.id } })}>
+                  <Image source={{ uri: lastBoundUrl }} style={styles.lastBoundImage} />
+                </Pressable>
+                {lastBound.mood_tag ? (
+                  <ThemedText type="small" themeColor="accent" style={styles.lastBoundMood}>
+                    {lastBound.mood_tag}
+                  </ThemedText>
+                ) : null}
+              </>
+            ) : (
               <ThemedText type="default" themeColor="textSecondary" style={styles.cardBody}>
-                Answer today&apos;s question and reveal your partner&apos;s answer together.
+                Waiting for a photo from your partner.
               </ThemedText>
-              <Pressable onPress={() => router.push('/prompt')}>
-                <ThemedText type="link" themeColor="accent">
-                  Open
-                </ThemedText>
-              </Pressable>
-            </NBCard>
-
-            <NBCard>
-              <ThemedText type="title">Partner presence</ThemedText>
-              <ThemedText type="default" themeColor="textSecondary" style={styles.cardBody}>
-                Share what you&apos;re up to — your partner will see it in Bound.
-              </ThemedText>
-              <Pressable onPress={() => router.push('/photos')}>
-                <ThemedText type="link" themeColor="accent">
-                  Open
-                </ThemedText>
-              </Pressable>
-            </NBCard>
-
-            <NBCard>
-              <ThemedText type="title">Your pet</ThemedText>
-              <ThemedText type="default" style={styles.cardBody}>
-                {petMoodEmoji[mockPet.mood]} {mockPet.name} · level {mockPet.level}
-              </ThemedText>
-              <Pressable onPress={() => router.push('/pet')}>
-                <ThemedText type="link" themeColor="accent">
-                  Visit
-                </ThemedText>
-              </Pressable>
-            </NBCard>
-
-            <NBCard>
-              <ThemedText type="title">Weekly share</ThemedText>
-              <ThemedText type="default" style={styles.cardBody}>
-                {mockWeeklyShare.quote}
-              </ThemedText>
-              <Pressable onPress={() => router.push('/weekly-share')}>
-                <ThemedText type="link" themeColor="accent">
-                  Open
-                </ThemedText>
-              </Pressable>
-            </NBCard>
-
-            <NBCard>
-              <ThemedText type="title">Date ideas</ThemedText>
-              <ThemedText type="default" themeColor="textSecondary" style={styles.cardBody}>
-                {mockDateIdeas.length} saved ideas, {mockDateIdeas.filter((i) => i.starred).length} starred
-              </ThemedText>
-              <Pressable onPress={() => router.push('/date-ideas')}>
-                <ThemedText type="link" themeColor="accent">
-                  Browse
-                </ThemedText>
-              </Pressable>
-            </NBCard>
-
-            <NBCard>
-              <ThemedText type="title">Gift ideas</ThemedText>
-              <ThemedText type="default" themeColor="textSecondary" style={styles.cardBody}>
-                {mockGiftIdeas.length} saved ideas
-              </ThemedText>
-              <Pressable onPress={() => router.push('/gifts')}>
-                <ThemedText type="link" themeColor="accent">
-                  Browse
-                </ThemedText>
-              </Pressable>
-            </NBCard>
-          </>
+            )}
+          </NBCard>
         )}
 
-        <NBCard>
-          <View style={styles.rowBetween}>
-            <ThemedText type="title">Today&apos;s habits</ThemedText>
-            <Pressable onPress={() => router.push('/calendar')}>
-              <ThemedText type="link" themeColor="accent">
-                See all
-              </ThemedText>
-            </Pressable>
-          </View>
-          {habits.length === 0 ? (
-            <ThemedText type="default" themeColor="textSecondary" style={styles.habitEmpty}>
-              No habits added yet.
-            </ThemedText>
-          ) : (
-            habits.slice(0, 3).map((habit) => {
-              const doneToday =
-                completions.find((c) => c.habit_id === habit.id && c.user_id === session?.user.id)?.completed ?? false;
-              return (
-                <Pressable key={habit.id} onPress={() => onToggle(habit, doneToday)} style={styles.habitRow}>
-                  <Ionicons
-                    name={doneToday ? 'checkmark-circle' : 'ellipse-outline'}
-                    size={18}
-                    color={doneToday ? theme.accent : theme.textSecondary}
-                  />
-                  <ThemedText type="default" style={styles.habitLabel}>
-                    {habit.title}
+        {(!couple || habits.length > 0) && (
+          <NBCard>
+            <View style={styles.rowBetween}>
+              <ThemedText type="title">Today&apos;s habits</ThemedText>
+              {habits.length > 0 ? (
+                <Pressable onPress={() => router.push('/timeline')}>
+                  <ThemedText type="link" themeColor="accent">
+                    See all
                   </ThemedText>
                 </Pressable>
-              );
-            })
-          )}
-        </NBCard>
+              ) : null}
+            </View>
+            {habits.length === 0 ? (
+              <>
+                <ThemedText type="default" themeColor="textSecondary" style={styles.habitEmpty}>
+                  {couple ? 'Track personal and shared habits together.' : "Start with personal habits—they'll merge when you connect."}
+                </ThemedText>
+                <View style={styles.cardButton}>
+                  <NBSecondaryButton title="Open timeline" onPress={() => router.push('/timeline')} />
+                </View>
+              </>
+            ) : (
+              habits.slice(0, 3).map((habit) => {
+                const doneToday =
+                  completions.find((c) => c.habit_id === habit.id && c.user_id === session?.user.id)?.completed ?? false;
+                return (
+                  <Pressable key={habit.id} onPress={() => onToggle(habit, doneToday)} style={styles.habitRow}>
+                    <Ionicons
+                      name={doneToday ? 'checkmark-circle' : 'ellipse-outline'}
+                      size={18}
+                      color={doneToday ? theme.accent : theme.textSecondary}
+                    />
+                    <ThemedText type="default" style={styles.habitLabel}>
+                      {habit.title}
+                    </ThemedText>
+                  </Pressable>
+                );
+              })
+            )}
+          </NBCard>
+        )}
+
+        {couple ? (
+          <NBCard>
+            <View style={styles.rowBetween}>
+              <ThemedText type="title">Your pets</ThemedText>
+              <Ionicons name="paw" size={18} color={theme.accent} />
+            </View>
+            <View style={styles.petRowSpacing}>
+              <PetPreviewRow myPet={myPet} partnerPet={partnerPet} />
+            </View>
+            <View style={styles.cardButton}>
+              {myPet ? (
+                <NBSecondaryButton title="Visit play area" onPress={() => router.push('/play')} />
+              ) : (
+                <NBPrimaryButton title="Choose your pet" onPress={() => router.push('/pet')} />
+              )}
+            </View>
+          </NBCard>
+        ) : null}
+
+        {couple ? (
+          <NBCard>
+            <View style={styles.rowBetween}>
+              <ThemedText type="title">Cycle tracking</ThemedText>
+              <Ionicons name="heart-circle" size={18} color={theme.accent} />
+            </View>
+            {cycleProfile && cyclePhase ? (
+              <View style={styles.cardBody}>
+                <CyclePhaseBar phase={cyclePhase.currentPhase} progress={cyclePhase.phaseProgress} />
+              </View>
+            ) : (
+              <ThemedText type="default" themeColor="textSecondary" style={styles.cardBody}>
+                Optionally track your cycle and share selected details with your partner for support.
+              </ThemedText>
+            )}
+            <View style={styles.cardButton}>
+              {cycleProfile ? (
+                <NBSecondaryButton title="Open dashboard" onPress={() => router.push('/cycle-tracking')} />
+              ) : (
+                <NBPrimaryButton
+                  title={cycleOptingIn ? 'Enabling…' : 'Enable cycle sharing'}
+                  onPress={onEnableCycleSharing}
+                  disabled={cycleOptingIn}
+                />
+              )}
+            </View>
+          </NBCard>
+        ) : null}
 
         <NBCard>
           <View style={styles.rowBetween}>
             <ThemedText type="title">Extensions</ThemedText>
-            <Ionicons name="grid-outline" size={20} color={theme.textSecondary} />
+            <Ionicons name="grid" size={20} color={theme.textSecondary} />
           </View>
           <ThemedText type="default" themeColor="textSecondary" style={styles.cardBody}>
             Turn optional home cards on or off, and tell us what you&apos;d like next.
@@ -196,4 +257,7 @@ const styles = StyleSheet.create({
   habitEmpty: { marginTop: 10 },
   habitRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 10 },
   habitLabel: { flex: 1 },
+  lastBoundImage: { width: '100%', height: 240, borderRadius: 14, marginTop: 8 },
+  lastBoundMood: { marginTop: 8 },
+  petRowSpacing: { marginTop: 12 },
 });

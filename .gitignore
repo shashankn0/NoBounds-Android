@@ -46,3 +46,7 @@ example
 /AppPhotos
 /Notes.md
 /notes.html
+/nobounds-ideal-photos-iosversion
+
+# firebase credentials — project-specific, not committed (like .env.local)
+/google-services.json

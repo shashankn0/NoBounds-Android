@@ -38,13 +38,25 @@ okay to leave things broken or incomplete during this phase.
 - Frontend: React Native + Expo (my choice — I already have some
   experience with Expo from a separate personal project, faster than
   learning native Kotlin from scratch for this prototype phase)
-- Backend: Supabase — using MY OWN separate Supabase project for now,
-  NOT Shaan's real/production one. Do not assume access to his backend
-  or its schema; anything backend-related right now is against my own
-  sandbox instance.
-- Eventually (post-prototype), the real Android build will need to
-  connect to Shaan's actual Supabase backend so both platforms share
-  the same users/data — but that's a later phase, not now.
+- Backend: Supabase — as of 2026-09-14, connected directly to Shaan's
+  real production project ("No Bounds", ref knbpxdhmmowfwydqhycg). This
+  is NOT a sandbox anymore — it's the same backend the live iOS app
+  uses, with real couples' data on it. The earlier standalone sandbox
+  project is retired.
+  - Shaan has explicitly given permission to make backend changes
+    (schema, RLS, functions) as needed for the Android port, with one
+    hard constraint: **never break the iOS app.** In practice:
+    - Prefer additive changes: new tables, new nullable columns, new
+      functions. Don't drop, rename, or retype anything existing.
+    - Before changing any table/column/function/RLS policy that
+      already exists, check ../NoBounds (the real iOS source) to see
+      whether iOS depends on its current shape — the iOS Swift code is
+      the ground truth for what's safe to touch, not assumptions.
+    - Never delete or mutate existing rows — this is real user data,
+      not throwaway sandbox rows.
+    - When genuinely unsure whether a change is iOS-safe, ask rather
+      than guess; a wrong guess here affects Shaan's live app, not
+      just this one.
 
 ### Known things NoBounds (iOS) likely handles that need Android equivalents
 - Auth: Sign in with Apple / Keychain → will need Google Sign-In /
