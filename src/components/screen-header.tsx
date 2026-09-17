@@ -1,11 +1,13 @@
 import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
+import { useCallback, useState } from 'react';
 import { Image, Pressable, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
 import { useSession } from '@/contexts/session-context';
 import { useTheme } from '@/hooks/use-theme';
+import { fetchUnreadNotificationCount } from '@/lib/notifications';
 
 type ScreenHeaderProps = {
   // shows "Paired with: {partner name}" in the center, tappable through to /pairing —
@@ -21,13 +23,23 @@ export function ScreenHeader({ showPairing = false }: ScreenHeaderProps) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const { couple, featuredAvatarUrl } = useSession();
+  const [hasUnread, setHasUnread] = useState(false);
+
+  // refetched on every tab focus, same as re-checking on each screen appearance in ios
+  useFocusEffect(
+    useCallback(() => {
+      fetchUnreadNotificationCount()
+        .then((count) => setHasUnread(count > 0))
+        .catch(() => {});
+    }, [])
+  );
 
   return (
     <View style={[styles.row, { paddingTop: insets.top + 8 }]}>
       <Pressable
         onPress={() => router.push('/notifications')}
-        style={[styles.iconButton, { backgroundColor: theme.surface }]}>
-        <Ionicons name="notifications" size={20} color={theme.textPrimary} />
+        style={[styles.iconButton, hasUnread && { backgroundColor: theme.accentMuted + '59' }]}>
+        <Ionicons name="notifications" size={20} color={hasUnread ? theme.accent : theme.textPrimary} />
       </Pressable>
 
       {showPairing && couple ? (

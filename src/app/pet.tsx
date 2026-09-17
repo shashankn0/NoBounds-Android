@@ -1,6 +1,7 @@
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { FormHeader } from '@/components/form-header';
 import { NBCard } from '@/components/nb-card';
@@ -18,6 +19,7 @@ import { errorMessage, supabase } from '@/lib/supabase';
 
 export default function PetScreen() {
   const theme = useTheme();
+  const insets = useSafeAreaInsets();
   const { petId } = useLocalSearchParams<{ petId?: string }>();
   const { session, couple } = useSession();
   const [pets, setPets] = useState<UserPet[]>([]);
@@ -147,7 +149,7 @@ export default function PetScreen() {
     return (
       <ThemedView style={styles.container}>
         <FormHeader title="Adopt a pet" leftLabel="Close" onLeftPress={() => router.back()} />
-        <ScrollView contentContainerStyle={styles.scroll}>
+        <ScrollView contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 20 }]}>
           <NBCard>
             <ThemedText type="small" themeColor="textSecondary" style={styles.body}>
               This choice is permanent for now — pick a companion and give it a name.
@@ -208,7 +210,7 @@ export default function PetScreen() {
   return (
     <ThemedView style={styles.container}>
       <FormHeader title={viewedPet.name} leftLabel="Close" onLeftPress={() => router.back()} />
-      <ScrollView contentContainerStyle={styles.scroll}>
+      <ScrollView contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 20 }]}>
         <View style={styles.centered}>
           {speciesInfo ? (
             <PetSprite speciesKey={viewedPet.species_key as PetSpeciesKey} animation="idle" scale={previewScaleFor(viewedPet.species_key) * 2.2} />

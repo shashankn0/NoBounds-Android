@@ -1,87 +1,119 @@
-import { useFocusEffect } from 'expo-router';
-import { useCallback, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { router, useFocusEffect } from 'expo-router';
+import { useCallback, useMemo, useState } from 'react';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { CyclePhaseBar } from '@/components/cycle-phase-bar';
+import { CycleCalendar } from '@/components/cycle-calendar';
+import { FormHeader } from '@/components/form-header';
 import { NBCard } from '@/components/nb-card';
-import { NBPrimaryButton } from '@/components/nb-button';
+import { NBPrimaryButton, NBSecondaryButton } from '@/components/nb-button';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { Spacing } from '@/constants/theme';
 import { useSession } from '@/contexts/session-context';
 import { useTheme } from '@/hooks/use-theme';
-import { fetchCycleProfile, fetchSharingPermissions, logDailyEntry, upsertSharingPermissions } from '@/lib/cycle-tracking';
-import type {
-  CycleDailyEntry,
-  CycleFlowLevel,
-  CycleMood,
-  CycleSharingPermissions,
-  CycleSymptom,
-  CycleSymptomSeverity,
-  CycleSymptomType,
-  CycleTrackingProfile,
-} from '@/lib/database-types';
-import { supabase } from '@/lib/supabase';
+import { loadHideMyCycle, loadPartnerCycleFirst } from '@/lib/cycle-display-preferences';
+import {
+  CYCLE_FLOW_LABEL,
+  CYCLE_MOOD_LABEL,
+  CYCLE_PHASE_LABEL,
+  CYCLE_SEVERITY_LABEL,
+  CYCLE_SYMPTOM_LABEL,
+  averageCycleLength,
+  calculateCyclePhase,
+  fetchCycleProfile,
+  fetchDailyEntries,
+  fetchPartnerDailyEntries,
+  fetchPartnerPeriodLogs,
+  fetchPartnerProfile,
+  fetchPartnerSharingPermissions,
+  fetchPeriodLogs,
+  isProfileActivelySharing,
+  logPeriodStart,
+  type CyclePhaseSnapshot,
+} from '@/lib/cycle-tracking';
+import { CYCLE_MEDICAL_DISCLAIMER, cycleMoodExplanation, cycleSupportTips } from '@/lib/cycle-support-tips';
+import type { CycleDailyEntry, CyclePeriodLog, CycleSharingPermissions, CycleTrackingProfile } from '@/lib/database-types';
+import { dateKey, todayKey } from '@/lib/habits';
 
-const FLOW_LEVELS: CycleFlowLevel[] = ['none', 'light', 'medium', 'heavy'];
-// tapping a symptom cycles through these, then back off — lets severe actually be reachable,
-// which matters since the real backend's SOS notification only fires on 'severe'
-const SEVERITY_CYCLE: CycleSymptomSeverity[] = ['mild', 'moderate', 'severe'];
-const MOODS: CycleMood[] = ['happy', 'calm', 'anxious', 'irritable', 'sad', 'energetic', 'tired'];
-const SYMPTOM_TYPES: CycleSymptomType[] = [
-  'cramps',
-  'headache',
-  'migraine',
-  'bloating',
-  'nausea',
-  'back_pain',
-  'breast_tenderness',
-  'fatigue',
-];
-const SHARING_LABELS: { key: keyof Omit<CycleSharingPermissions, 'user_id' | 'updated_at'>; label: string }[] = [
-  { key: 'share_period_dates', label: 'Period dates' },
-  { key: 'share_flow_details', label: 'Flow details' },
-  { key: 'share_moods', label: 'Moods' },
-  { key: 'share_symptoms', label: 'Symptoms' },
-  { key: 'share_phase', label: 'Cycle phase' },
-];
+const DAILY_ENTRY_LOOKBACK_DAYS = 180;
+
+type Segment = 'my' | 'partner';
 
 export default function CycleTrackingScreen() {
   const theme = useTheme();
+  const insets = useSafeAreaInsets();
   const { session, couple } = useSession();
-  const [profile, setProfile] = useState<CycleTrackingProfile | null>(null);
-  const [sharing, setSharing] = useState<CycleSharingPermissions | null>(null);
-  const [todayEntry, setTodayEntry] = useState<CycleDailyEntry | null>(null);
+
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const today = new Date().toISOString().slice(0, 10);
+  const [profile, setProfile] = useState<CycleTrackingProfile | null>(null);
+  const [periodLogs, setPeriodLogs] = useState<CyclePeriodLog[]>([]);
+  const [dailyEntries, setDailyEntries] = useState<CycleDailyEntry[]>([]);
+
+  const [partnerProfile, setPartnerProfile] = useState<CycleTrackingProfile | null>(null);
+  const [partnerPermissions, setPartnerPermissions] = useState<CycleSharingPermissions | null>(null);
+  const [partnerPeriodLogs, setPartnerPeriodLogs] = useState<CyclePeriodLog[]>([]);
+  const [partnerDailyEntries, setPartnerDailyEntries] = useState<CycleDailyEntry[]>([]);
+
+  const [hideMyCycle, setHideMyCycle] = useState(false);
+  const [partnerCycleFirst, setPartnerCycleFirst] = useState(false);
+  const [selectedSegment, setSelectedSegment] = useState<Segment>('my');
+
+  const partnerId = couple?.partnerId ?? null;
 
   const load = useCallback(async () => {
+    if (!session || !couple) return;
     setLoading(true);
     setError(null);
     try {
-      const profileRow = await fetchCycleProfile();
+      const [hideMy, partnerFirst, profileRow] = await Promise.all([
+        loadHideMyCycle(),
+        loadPartnerCycleFirst(),
+        fetchCycleProfile(),
+      ]);
+      setHideMyCycle(hideMy);
+      setPartnerCycleFirst(partnerFirst);
       setProfile(profileRow);
+
+      const since = dateKey(new Date(Date.now() - DAILY_ENTRY_LOOKBACK_DAYS * 86_400_000));
+
       if (profileRow) {
-        const [sharingRow, { data: entryRow }] = await Promise.all([
-          fetchSharingPermissions(),
-          supabase
-            .from('cycle_daily_entries')
-            .select('*')
-            .eq('user_id', profileRow.user_id)
-            .eq('entry_date', today)
-            .maybeSingle(),
-        ]);
-        setSharing(sharingRow);
-        setTodayEntry((entryRow as CycleDailyEntry | null) ?? null);
+        const [logs, entries] = await Promise.all([fetchPeriodLogs(), fetchDailyEntries(since)]);
+        setPeriodLogs(logs);
+        setDailyEntries(entries);
       }
+
+      if (partnerId) {
+        // each field is independent, best-effort, like ios's per-field `try?` — one failing
+        // (network hiccup, a not-yet-shared permission) must never blank out the others
+        const [pProfile, pPermissions, pLogs, pEntries] = await Promise.allSettled([
+          fetchPartnerProfile(partnerId),
+          fetchPartnerSharingPermissions(partnerId),
+          fetchPartnerPeriodLogs(partnerId),
+          fetchPartnerDailyEntries(partnerId, since),
+        ]);
+        if (pProfile.status === 'fulfilled') setPartnerProfile(pProfile.value);
+        else console.warn('fetchPartnerProfile failed', pProfile.reason);
+        if (pPermissions.status === 'fulfilled') setPartnerPermissions(pPermissions.value);
+        else console.warn('fetchPartnerSharingPermissions failed', pPermissions.reason);
+        if (pLogs.status === 'fulfilled') setPartnerPeriodLogs(pLogs.value);
+        else console.warn('fetchPartnerPeriodLogs failed', pLogs.reason);
+        if (pEntries.status === 'fulfilled') setPartnerDailyEntries(pEntries.value);
+        else console.warn('fetchPartnerDailyEntries failed', pEntries.reason);
+      }
+
+      const availableNow: Segment[] = hideMy ? ['partner'] : partnerFirst ? ['partner', 'my'] : ['my', 'partner'];
+      setSelectedSegment(availableNow[0]);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not load cycle tracking');
     } finally {
       setLoading(false);
     }
-  }, [today]);
+  }, [session, couple, partnerId]);
 
   useFocusEffect(
     useCallback(() => {
@@ -89,71 +121,35 @@ export default function CycleTrackingScreen() {
     }, [load])
   );
 
-  async function onOptIn() {
-    if (!session || !couple) return;
+  const availableSegments = useMemo<Segment[]>(
+    () => (hideMyCycle ? ['partner'] : partnerCycleFirst ? ['partner', 'my'] : ['my', 'partner']),
+    [hideMyCycle, partnerCycleFirst]
+  );
+
+  const myPhaseSnapshot = useMemo<CyclePhaseSnapshot | null>(() => {
+    if (!profile) return null;
+    const cycleLength = averageCycleLength(periodLogs) ?? profile.avg_cycle_length_days;
+    return calculateCyclePhase(new Date(), periodLogs, cycleLength, profile.avg_period_length_days);
+  }, [profile, periodLogs]);
+
+  const partnerActivelySharing = isProfileActivelySharing(partnerProfile);
+
+  const partnerPhaseSnapshot = useMemo<CyclePhaseSnapshot | null>(() => {
+    if (!partnerProfile || !partnerActivelySharing) return null;
+    const cycleLength = averageCycleLength(partnerPeriodLogs) ?? partnerProfile.avg_cycle_length_days;
+    return calculateCyclePhase(new Date(), partnerPeriodLogs, cycleLength, partnerProfile.avg_period_length_days);
+  }, [partnerProfile, partnerActivelySharing, partnerPeriodLogs]);
+
+  async function onLogPeriodStart() {
+    if (!couple) return;
     setSaving(true);
-    setError(null);
-    const { error: insertError } = await supabase
-      .from('cycle_tracking_profiles')
-      .insert({ user_id: session.user.id, couple_id: couple.id });
-    if (insertError) {
+    try {
+      await logPeriodStart(couple.id, todayKey());
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not log period start');
+    } finally {
       setSaving(false);
-      setError(insertError.message);
-      return;
-    }
-    // sharing permissions is a separate row, defaults everything to off until turned on below
-    await supabase.from('cycle_sharing_permissions').insert({ user_id: session.user.id });
-    setSaving(false);
-    await load();
-  }
-
-  async function onSetMood(mood: CycleMood) {
-    if (!couple) return;
-    const next = todayEntry?.mood === mood ? null : mood;
-    setTodayEntry((prev) => (prev ? { ...prev, mood: next } : prev));
-    try {
-      await logDailyEntry(couple.id, today, { mood: next });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not save mood');
-    }
-  }
-
-  async function onSetFlow(level: CycleFlowLevel) {
-    if (!couple) return;
-    setTodayEntry((prev) => (prev ? { ...prev, flow_level: level } : prev));
-    try {
-      await logDailyEntry(couple.id, today, { flowLevel: level });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not save flow');
-    }
-  }
-
-  // tap cycles off -> mild -> moderate -> severe -> off
-  async function onToggleSymptom(type: CycleSymptomType) {
-    if (!couple) return;
-    const current: CycleSymptom[] = todayEntry?.symptoms ?? [];
-    const existing = current.find((s) => s.type === type);
-    const cycleIndex = existing ? SEVERITY_CYCLE.indexOf(existing.severity) : -1;
-    const nextSeverity = cycleIndex >= 0 ? SEVERITY_CYCLE[cycleIndex + 1] : SEVERITY_CYCLE[0];
-
-    const next = nextSeverity
-      ? [...current.filter((s) => s.type !== type), { type, severity: nextSeverity }]
-      : current.filter((s) => s.type !== type);
-
-    setTodayEntry((prev) => (prev ? { ...prev, symptoms: next } : prev));
-    try {
-      await logDailyEntry(couple.id, today, { symptoms: next });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not save symptoms');
-    }
-  }
-
-  async function onToggleSharing(key: (typeof SHARING_LABELS)[number]['key'], value: boolean) {
-    setSharing((prev) => (prev ? { ...prev, [key]: value } : prev));
-    try {
-      await upsertSharingPermissions({ [key]: value });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not update sharing');
     }
   }
 
@@ -169,151 +165,278 @@ export default function CycleTrackingScreen() {
 
   if (loading) {
     return (
-      <ThemedView style={styles.container}>
-        <ThemedText type="default" themeColor="textSecondary">
-          Loading…
-        </ThemedText>
-      </ThemedView>
-    );
-  }
-
-  if (!profile) {
-    return (
-      <ThemedView style={styles.container}>
-        <NBCard>
-          <ThemedText type="title">Cycle tracking</ThemedText>
-          <ThemedText type="small" themeColor="textSecondary" style={styles.body}>
-            Track your cycle, and optionally share details with your partner.
+      <ThemedView style={{ flex: 1 }}>
+        <FormHeader title="Cycle tracking" leftLabel="Back" onLeftPress={() => router.back()} />
+        <View style={styles.container}>
+          <ThemedText type="default" themeColor="textSecondary">
+            Loading…
           </ThemedText>
-          <View style={styles.body}>
-            <NBPrimaryButton title={saving ? 'Turning on…' : 'Turn on'} onPress={onOptIn} disabled={saving} />
-          </View>
-        </NBCard>
-        {error ? (
-          <ThemedText type="small" themeColor="destructive">
-            {error}
-          </ThemedText>
-        ) : null}
+        </View>
       </ThemedView>
     );
   }
 
   return (
     <ThemedView style={{ flex: 1 }}>
-      <ScrollView contentContainerStyle={styles.scroll}>
-        <NBCard>
-          <ThemedText type="title">Cycle tracking</ThemedText>
-          <ThemedText type="default" themeColor="textSecondary" style={styles.body}>
-            {profile.avg_cycle_length_days}-day average cycle
-          </ThemedText>
-        </NBCard>
-
-        <NBCard>
-          <ThemedText type="small" themeColor="textSecondary" style={styles.body}>
-            Today&apos;s mood
-          </ThemedText>
-          <View style={styles.chipRow}>
-            {MOODS.map((mood) => {
-              const active = todayEntry?.mood === mood;
-              return (
-                <Pressable
-                  key={mood}
-                  onPress={() => onSetMood(mood)}
-                  style={[
-                    styles.chip,
-                    { borderColor: active ? theme.accent : theme.border },
-                    active && { backgroundColor: theme.accentMuted },
-                  ]}>
-                  <ThemedText type="small">{mood}</ThemedText>
-                </Pressable>
-              );
-            })}
+      <FormHeader
+        title="Cycle tracking"
+        leftLabel="Back"
+        onLeftPress={() => router.back()}
+        rightLabel="Settings"
+        onRightPress={() => router.push('/cycle-sharing-settings')}
+      />
+      <ScrollView contentContainerStyle={[styles.container, { paddingBottom: insets.bottom + 20 }]}>
+        {availableSegments.length > 1 ? (
+          <View style={[styles.segmented, { backgroundColor: theme.backgroundSecondary }]}>
+            {availableSegments.map((segment) => (
+              <Pressable key={segment} onPress={() => setSelectedSegment(segment)} style={styles.segmentWrap}>
+                <View style={[styles.segment, selectedSegment === segment && { backgroundColor: theme.surface }]}>
+                  <ThemedText type="smallBold">{segment === 'my' ? 'My Cycle' : "Partner's Cycle"}</ThemedText>
+                </View>
+              </Pressable>
+            ))}
           </View>
-        </NBCard>
+        ) : null}
 
-        <NBCard>
-          <ThemedText type="small" themeColor="textSecondary" style={styles.body}>
-            Today&apos;s flow
-          </ThemedText>
-          <View style={styles.chipRow}>
-            {FLOW_LEVELS.map((level) => {
-              const active = todayEntry?.flow_level === level;
-              return (
-                <Pressable
-                  key={level}
-                  onPress={() => onSetFlow(level)}
-                  style={[
-                    styles.chip,
-                    { borderColor: active ? theme.accent : theme.border },
-                    active && { backgroundColor: theme.accentMuted },
-                  ]}>
-                  <ThemedText type="small">{level}</ThemedText>
-                </Pressable>
-              );
-            })}
-          </View>
-        </NBCard>
-
-        <NBCard>
-          <ThemedText type="small" themeColor="textSecondary" style={styles.body}>
-            Symptoms — tap to cycle mild → moderate → severe
-          </ThemedText>
-          <View style={styles.chipRow}>
-            {SYMPTOM_TYPES.map((type) => {
-              const entry = (todayEntry?.symptoms ?? []).find((s) => s.type === type);
-              return (
-                <Pressable
-                  key={type}
-                  onPress={() => onToggleSymptom(type)}
-                  style={[
-                    styles.chip,
-                    { borderColor: entry ? theme.accent : theme.border },
-                    entry && { backgroundColor: theme.accentMuted },
-                  ]}>
-                  <ThemedText type="small">
-                    {type.replace('_', ' ')}
-                    {entry ? ` · ${entry.severity}` : ''}
-                  </ThemedText>
-                </Pressable>
-              );
-            })}
-          </View>
-        </NBCard>
-
-        <NBCard>
-          <ThemedText type="small" themeColor="textSecondary" style={styles.body}>
-            Share with partner
-          </ThemedText>
-          {SHARING_LABELS.map(({ key, label }) => (
-            <View key={key} style={styles.sharingRow}>
-              <ThemedText type="default" style={styles.sharingLabel}>
-                {label}
-              </ThemedText>
-              <Switch
-                value={sharing?.[key] ?? false}
-                onValueChange={(value) => onToggleSharing(key, value)}
-                trackColor={{ true: theme.accent, false: theme.border }}
-              />
-            </View>
-          ))}
-        </NBCard>
+        {!profile ? (
+          <NBCard>
+            <ThemedText type="small" themeColor="textSecondary">
+              Cycle sharing is disabled. Enable it from the home screen.
+            </ThemedText>
+          </NBCard>
+        ) : selectedSegment === 'my' && !hideMyCycle ? (
+          <MyCycleContent
+            periodLogs={periodLogs}
+            dailyEntries={dailyEntries}
+            snapshot={myPhaseSnapshot}
+            saving={saving}
+            onLogPeriodStart={onLogPeriodStart}
+          />
+        ) : (
+          <PartnerCycleContent
+            partnerProfile={partnerProfile}
+            partnerActivelySharing={partnerActivelySharing}
+            permissions={partnerPermissions}
+            snapshot={partnerPhaseSnapshot}
+            periodLogs={partnerPeriodLogs}
+            dailyEntries={partnerDailyEntries}
+          />
+        )}
 
         {error ? (
           <ThemedText type="small" themeColor="destructive">
             {error}
           </ThemedText>
         ) : null}
+
+        <ThemedText type="small" themeColor="textSecondary" style={styles.disclaimer}>
+          {CYCLE_MEDICAL_DISCLAIMER}
+        </ThemedText>
       </ScrollView>
     </ThemedView>
   );
 }
 
+function MyCycleContent({
+  periodLogs,
+  dailyEntries,
+  snapshot,
+  saving,
+  onLogPeriodStart,
+}: {
+  periodLogs: CyclePeriodLog[];
+  dailyEntries: CycleDailyEntry[];
+  snapshot: CyclePhaseSnapshot | null;
+  saving: boolean;
+  onLogPeriodStart: () => void;
+}) {
+  if (!snapshot) return null;
+
+  return (
+    <>
+      <NBCard>
+        <CyclePhaseBar phase={snapshot.currentPhase} progress={snapshot.phaseProgress} />
+      </NBCard>
+
+      <NBCard>
+        <CycleCalendar
+          periodLogs={periodLogs}
+          snapshot={snapshot}
+          showFlowDetails
+          onDayTap={(date) => router.push({ pathname: '/cycle-log', params: { date: dateKey(date) } })}
+        />
+      </NBCard>
+
+      <NBCard style={styles.gapCard}>
+        <ThemedText type="smallBold">Quick actions</ThemedText>
+        <NBPrimaryButton title="Log today" onPress={() => router.push({ pathname: '/cycle-log', params: { date: todayKey() } })} />
+        <NBSecondaryButton title={saving ? 'Logging…' : 'Log period start'} onPress={onLogPeriodStart} disabled={saving} />
+      </NBCard>
+
+      {dailyEntries.length > 0 ? (
+        <NBCard style={styles.gapCard}>
+          <ThemedText type="smallBold">Recent entries</ThemedText>
+          {dailyEntries.slice(0, 5).map((entry) => (
+            <EntryRow key={entry.id} entry={entry} showFlow showSymptoms />
+          ))}
+        </NBCard>
+      ) : null}
+    </>
+  );
+}
+
+function PartnerCycleContent({
+  partnerProfile,
+  partnerActivelySharing,
+  permissions,
+  snapshot,
+  periodLogs,
+  dailyEntries,
+}: {
+  partnerProfile: CycleTrackingProfile | null;
+  partnerActivelySharing: boolean;
+  permissions: CycleSharingPermissions | null;
+  snapshot: CyclePhaseSnapshot | null;
+  periodLogs: CyclePeriodLog[];
+  dailyEntries: CycleDailyEntry[];
+}) {
+  const theme = useTheme();
+
+  if (!partnerProfile || !partnerActivelySharing) {
+    return (
+      <NBCard>
+        <ThemedText type="small" themeColor="textSecondary">
+          Your partner has not enabled cycle sharing yet.
+        </ThemedText>
+      </NBCard>
+    );
+  }
+
+  if (!permissions?.share_phase || !snapshot) {
+    return (
+      <NBCard>
+        <ThemedText type="small" themeColor="textSecondary">
+          Your partner is sharing, but phase data is not visible yet.
+        </ThemedText>
+      </NBCard>
+    );
+  }
+
+  const moodEntries = permissions.share_moods ? dailyEntries.filter((e) => e.mood) : [];
+  const symptomEntries = permissions.share_symptoms ? dailyEntries.filter((e) => e.symptoms.length > 0) : [];
+
+  return (
+    <>
+      <NBCard>
+        <CyclePhaseBar phase={snapshot.currentPhase} progress={snapshot.phaseProgress} />
+      </NBCard>
+
+      <NBCard style={styles.gapCard}>
+        <ThemedText type="smallBold">Support tips</ThemedText>
+        <ThemedText type="small" themeColor="textSecondary">
+          Ideas for today during the {CYCLE_PHASE_LABEL[snapshot.currentPhase].toLowerCase()} phase.
+        </ThemedText>
+        {cycleSupportTips(snapshot.currentPhase).map((tip) => (
+          <View key={tip} style={styles.tipRow}>
+            <Ionicons name="heart" size={13} color={theme.accent} style={styles.tipIcon} />
+            <ThemedText type="default" style={styles.tipText}>
+              {tip}
+            </ThemedText>
+          </View>
+        ))}
+      </NBCard>
+
+      {permissions.share_period_dates && periodLogs.length > 0 ? (
+        <NBCard>
+          <CycleCalendar periodLogs={periodLogs} snapshot={snapshot} showFlowDetails={permissions.share_flow_details} />
+        </NBCard>
+      ) : null}
+
+      {moodEntries.length > 0 ? (
+        <NBCard style={styles.gapCard}>
+          <ThemedText type="smallBold">Partner moods</ThemedText>
+          {moodEntries.slice(0, 5).map((entry) => (entry.mood ? <MoodTooltip key={entry.id} mood={entry.mood} /> : null))}
+        </NBCard>
+      ) : null}
+
+      {symptomEntries.length > 0 ? (
+        <NBCard style={styles.gapCard}>
+          <ThemedText type="smallBold">Recent symptoms</ThemedText>
+          {symptomEntries.slice(0, 5).map((entry) => (
+            <View key={entry.id} style={styles.symptomEntryRow}>
+              <ThemedText type="small" themeColor="textSecondary" style={styles.entryDate}>
+                {formatEntryDate(entry.entry_date)}
+              </ThemedText>
+              {entry.symptoms.map((s) => (
+                <ThemedText key={s.type} type="default">
+                  {CYCLE_SYMPTOM_LABEL[s.type]} — {CYCLE_SEVERITY_LABEL[s.severity]}
+                </ThemedText>
+              ))}
+            </View>
+          ))}
+        </NBCard>
+      ) : null}
+    </>
+  );
+}
+
+function MoodTooltip({ mood }: { mood: CycleDailyEntry['mood'] }) {
+  const theme = useTheme();
+  const [expanded, setExpanded] = useState(false);
+  if (!mood) return null;
+
+  return (
+    <Pressable onPress={() => setExpanded((v) => !v)} style={[styles.moodTooltip, { backgroundColor: theme.backgroundSecondary }]}>
+      <View style={styles.moodTooltipHeader}>
+        <ThemedText type="smallBold">{CYCLE_MOOD_LABEL[mood]}</ThemedText>
+        <Ionicons name={expanded ? 'chevron-up' : 'information-circle-outline'} size={16} color={theme.accent} />
+      </View>
+      {expanded ? (
+        <ThemedText type="small" themeColor="textSecondary" style={styles.moodExplanation}>
+          {cycleMoodExplanation(mood)}
+        </ThemedText>
+      ) : null}
+    </Pressable>
+  );
+}
+
+function EntryRow({ entry, showFlow, showSymptoms }: { entry: CycleDailyEntry; showFlow: boolean; showSymptoms: boolean }) {
+  return (
+    <View style={styles.entryRow}>
+      <ThemedText type="small" themeColor="textSecondary" style={styles.entryDate}>
+        {formatEntryDate(entry.entry_date)}
+      </ThemedText>
+      {entry.mood ? <ThemedText type="default">Mood: {CYCLE_MOOD_LABEL[entry.mood]}</ThemedText> : null}
+      {showFlow && entry.flow_level && entry.flow_level !== 'none' ? (
+        <ThemedText type="default">Flow: {CYCLE_FLOW_LABEL[entry.flow_level]}</ThemedText>
+      ) : null}
+      {showSymptoms && entry.symptoms.length > 0 ? (
+        <ThemedText type="small" themeColor="textSecondary">
+          {entry.symptoms.map((s) => CYCLE_SYMPTOM_LABEL[s.type]).join(', ')}
+        </ThemedText>
+      ) : null}
+    </View>
+  );
+}
+
+function formatEntryDate(entryDate: string): string {
+  return new Date(`${entryDate}T00:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: Spacing.four, gap: Spacing.three },
-  scroll: { padding: Spacing.four, gap: Spacing.three },
-  body: { marginTop: 8 },
-  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two },
-  chip: { paddingVertical: 8, paddingHorizontal: 14, borderWidth: 1, borderRadius: 999 },
-  sharingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 6 },
-  sharingLabel: { flex: 1 },
+  container: { padding: 20, gap: 16 },
+  segmented: { flexDirection: 'row', borderRadius: 12, padding: 4 },
+  segmentWrap: { flex: 1 },
+  segment: { paddingVertical: 8, alignItems: 'center', borderRadius: 9 },
+  gapCard: { gap: 10 },
+  tipRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
+  tipIcon: { marginTop: 3 },
+  tipText: { flex: 1 },
+  entryRow: { paddingVertical: 6, gap: 2 },
+  entryDate: { fontWeight: '600' },
+  symptomEntryRow: { paddingVertical: 6, gap: 2 },
+  moodTooltip: { borderRadius: 12, padding: 12, gap: 6 },
+  moodTooltipHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  moodExplanation: { lineHeight: 18 },
+  disclaimer: { marginTop: 8, lineHeight: 18 },
 });

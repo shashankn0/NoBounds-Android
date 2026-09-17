@@ -18,6 +18,7 @@ type Profile = {
 // partnerAvatarUrl is a bare avatars-bucket storage path (like profiles.avatar_url), not a real url.
 type Couple = {
   id: string;
+  partnerId: string | null;
   partnerName: string | null;
   partnerAvatarUrl: string | null;
 };
@@ -112,7 +113,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       partnerName = partnerProfile?.display_name ?? null;
       partnerAvatarUrl = partnerProfile?.avatar_url ?? null;
     }
-    setCouple({ id: memberRow.couple_id, partnerName, partnerAvatarUrl });
+    setCouple({ id: memberRow.couple_id, partnerId: partnerMemberRow?.user_id ?? null, partnerName, partnerAvatarUrl });
   }
 
   useEffect(() => {

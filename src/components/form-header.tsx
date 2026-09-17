@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import type { ReactNode } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -13,6 +14,14 @@ type FormHeaderProps = {
   rightLabel?: string;
   onRightPress?: () => void;
   rightDisabled?: boolean;
+  // custom content for the right side (e.g. a compound "+ | Done" pill) — overrides rightLabel
+  rightSlot?: ReactNode;
+  // 'left' left-aligns the title (matches ios's inline nav bar title, which sits at the
+  // leading edge next to a leading toolbar item) instead of the default centered one, and
+  // drops the empty leading spacer when there's no left pill. Still the same small bold
+  // single-line style as centered — ios's `.navigationBarTitleDisplayMode(.inline)` is not
+  // the large-title style.
+  titleAlign?: 'center' | 'left';
 };
 
 // mirrors the modal-sheet nav bar used across createentrysheet/creatememoryview/extensionsview:
@@ -26,31 +35,38 @@ export function FormHeader({
   rightLabel,
   onRightPress,
   rightDisabled,
+  rightSlot,
+  titleAlign = 'center',
 }: FormHeaderProps) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
+  const hasLeftPill = !!(leftLabel || leftIcon);
 
   return (
     <View style={[styles.row, { paddingTop: insets.top + 12 }]}>
-      <View style={styles.side}>
-        {leftLabel || leftIcon ? (
-          <Pressable onPress={onLeftPress} style={[styles.pill, { backgroundColor: theme.surface }]}>
-            {leftIcon ? <Ionicons name={leftIcon} size={20} color={theme.textPrimary} /> : null}
-            {leftLabel ? (
-              <ThemedText type="smallBold" themeColor="accent">
-                {leftLabel}
-              </ThemedText>
-            ) : null}
-          </Pressable>
-        ) : null}
-      </View>
+      {hasLeftPill || titleAlign === 'center' ? (
+        <View style={styles.side}>
+          {hasLeftPill ? (
+            <Pressable onPress={onLeftPress} style={[styles.pill, { backgroundColor: theme.surface }]}>
+              {leftIcon ? <Ionicons name={leftIcon} size={20} color={theme.textPrimary} /> : null}
+              {leftLabel ? (
+                <ThemedText type="smallBold" themeColor="accent">
+                  {leftLabel}
+                </ThemedText>
+              ) : null}
+            </Pressable>
+          ) : null}
+        </View>
+      ) : null}
 
-      <ThemedText type="smallBold" style={styles.title} numberOfLines={1}>
+      <ThemedText type="smallBold" style={[styles.title, titleAlign === 'left' && styles.titleLeft]} numberOfLines={1}>
         {title}
       </ThemedText>
 
       <View style={[styles.side, styles.sideRight]}>
-        {rightLabel ? (
+        {rightSlot ? (
+          rightSlot
+        ) : rightLabel ? (
           <Pressable
             onPress={onRightPress}
             disabled={rightDisabled}
@@ -84,4 +100,5 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
   },
   title: { flex: 1, textAlign: 'center' },
+  titleLeft: { textAlign: 'left', paddingRight: 8 },
 });

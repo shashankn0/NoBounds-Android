@@ -28,6 +28,8 @@ export async function fetchTimelineFeed(options: {
   filter: TimelineFilter;
   search?: string;
   before?: { occurredAt: string; itemId: string };
+  // yyyy-mm-dd — scopes the feed to one calendar day, for the calendar's day-detail sheet
+  onDate?: string;
 }): Promise<TimelineFeedItem[]> {
   // "all" and "favorites" both mean "don't filter by type"
   const itemTypes = options.filter === 'all' || options.filter === 'favorites' ? null : [options.filter];
@@ -41,7 +43,7 @@ export async function fetchTimelineFeed(options: {
     p_item_types: itemTypes,
     p_favorites_only: favoritesOnly,
     p_search: search && search.length > 0 ? search : null,
-    p_on_date: null,
+    p_on_date: options.onDate ?? null,
   });
   if (error) throw error;
   return (data as TimelineFeedItem[] | null) ?? [];

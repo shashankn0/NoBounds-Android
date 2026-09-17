@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { ScrollView, StyleSheet, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { NBCard } from '@/components/nb-card';
 import { ThemedText } from '@/components/themed-text';
@@ -10,10 +11,11 @@ import { useTheme } from '@/hooks/use-theme';
 // real content, copied verbatim from the ios app's "From the creators" screen
 export default function AboutScreen() {
   const theme = useTheme();
+  const insets = useSafeAreaInsets();
 
   return (
     <ThemedView style={{ flex: 1 }}>
-      <ScrollView contentContainerStyle={styles.container}>
+      <ScrollView contentContainerStyle={[styles.container, { paddingBottom: insets.bottom + 20 }]}>
         <NBCard style={styles.centered}>
           <View style={[styles.iconBadge, { backgroundColor: theme.accentMuted }]}>
             <Ionicons name="heart" size={24} color={theme.textOnAccent} />

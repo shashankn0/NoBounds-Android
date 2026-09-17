@@ -3,7 +3,7 @@ import { CameraView, useCameraPermissions, type CameraType, type FlashMode } fro
 import * as ImagePicker from 'expo-image-picker';
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { Image, Pressable, ScrollView, StyleSheet, TextInput, useWindowDimensions, View } from 'react-native';
+import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, TextInput, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { NBCard } from '@/components/nb-card';
@@ -93,9 +93,13 @@ export default function PhotosScreen() {
         capture_source: captured.source,
       });
       if (insertError) throw insertError;
-      onCancelCompose();
+      // mirrors ios's PresenceComposeView: the photo (and its dimmed overlay) stays on screen
+      // through a brief "Sent!" beat before returning to the camera, instead of vanishing
+      // the instant the upload finishes
       setSent(true);
-      setTimeout(() => setSent(false), 1200);
+      await new Promise((resolve) => setTimeout(resolve, 800));
+      onCancelCompose();
+      setSent(false);
     } catch (err) {
       setError(errorMessage(err, 'Could not send'));
     } finally {
@@ -205,6 +209,24 @@ export default function PhotosScreen() {
             <View style={styles.composeSpacer} />
           </View>
         </ScrollView>
+
+        {/* dims the whole compose screen (photo included) rather than swapping it away, so the
+            photo you just sent is still what "Sent!" appears over — mirrors ios's PresenceComposeView */}
+        {sent ? (
+          <View style={styles.uploadOverlay}>
+            <Ionicons name="checkmark-circle" size={48} color="#34C759" />
+            <ThemedText type="smallBold" style={styles.uploadOverlayText}>
+              Sent!
+            </ThemedText>
+          </View>
+        ) : sending ? (
+          <View style={styles.uploadOverlay}>
+            <ActivityIndicator size="large" color="#ffffff" />
+            <ThemedText type="small" style={styles.uploadOverlayText}>
+              Sending…
+            </ThemedText>
+          </View>
+        ) : null}
       </ThemedView>
     );
   }
@@ -233,16 +255,6 @@ export default function PhotosScreen() {
         </View>
       </View>
 
-      {sent ? (
-        <View style={styles.sentOverlay}>
-          <View style={[styles.sentPill, { backgroundColor: theme.accent }]}>
-            <ThemedText type="smallBold" style={{ color: theme.textOnAccent }}>
-              Sent!
-            </ThemedText>
-          </View>
-        </View>
-      ) : null}
-
       {/* library, shutter, flip — centered in the black space under the viewfinder */}
       <View style={[styles.controlsRow, { paddingBottom: insets.bottom + BottomTabInset }]}>
         <Pressable onPress={onPickFromLibrary} style={[styles.sideButton, styles.librarySquare]}>
@@ -268,14 +280,18 @@ const styles = StyleSheet.create({
   cardBody: { marginTop: 8, marginBottom: 4 },
   cardButton: { marginTop: 8 },
   fill: { flex: 1, backgroundColor: '#000000' },
-  sentOverlay: {
+  uploadOverlay: {
     position: 'absolute',
-    top: '40%',
+    top: 0,
     left: 0,
     right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.35)',
     alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
   },
-  sentPill: { paddingVertical: 10, paddingHorizontal: 24, borderRadius: 999 },
+  uploadOverlayText: { color: '#ffffff' },
   // 3:4 is the camera's own portrait aspect, so the preview fills the box without stretching
   viewfinder: {
     alignSelf: 'center',

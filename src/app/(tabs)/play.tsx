@@ -8,7 +8,7 @@ import { DrawAndGuess } from '@/components/draw-and-guess';
 import { NBCard } from '@/components/nb-card';
 import { NBPrimaryButton, NBSecondaryButton } from '@/components/nb-button';
 import { FormHeader } from '@/components/form-header';
-import { PetPreviewRow } from '@/components/pet-preview-row';
+import { PetPlayArea } from '@/components/pet-play-area';
 import { ScreenHeader } from '@/components/screen-header';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -23,6 +23,9 @@ import { fetchPetMessages, fetchPets, petMood, sendPetMessage } from '@/lib/pets
 
 // messages stay visible as a speech bubble for 12h — matches petmodels.swift's displaywindow
 const MESSAGE_DISPLAY_WINDOW_MS = 12 * 60 * 60 * 1000;
+// mirrors playtabview.swift's pollInterval — keeps pets/messages in sync with the partner's
+// device while this tab is open, not just on next focus
+const POLL_INTERVAL_MS = 30_000;
 
 type Board = (null | 'X' | 'O')[];
 
@@ -522,16 +525,13 @@ export default function PlayScreen() {
   useFocusEffect(
     useCallback(() => {
       loadPetArea();
+      const id = setInterval(loadPetArea, POLL_INTERVAL_MS);
+      return () => clearInterval(id);
     }, [loadPetArea])
   );
 
   const myPet = pets.find((p) => p.user_id === session?.user.id) ?? null;
   const partnerPet = pets.find((p) => p.user_id !== session?.user.id) ?? null;
-
-  function latestMessageFrom(userId: string | undefined): string | null {
-    if (!userId) return null;
-    return visibleMessages[userId] ?? null;
-  }
 
   async function onSendMessage() {
     if (!couple || messageText.trim().length === 0) return;
@@ -563,7 +563,7 @@ export default function PlayScreen() {
           {activeGame === 'japanese-flashcards' ? <Flashcards language="japanese" title="Japanese Flashcards" /> : null}
           {activeGame === 'draw-and-guess' ? (
             couple ? (
-              <DrawAndGuess coupleId={couple.id} />
+              <DrawAndGuess />
             ) : (
               <NBCard style={styles.gameCard}>
                 <ThemedText type="default" themeColor="textSecondary" style={styles.centeredText}>
@@ -603,26 +603,16 @@ export default function PlayScreen() {
           </>
         ) : (
           <>
-            <NBCard>
-              <Pressable onPress={() => router.push(myPet ? { pathname: '/pet', params: { petId: myPet.id } } : '/pet')}>
-                <PetPreviewRow myPet={myPet} partnerPet={partnerPet} />
-              </Pressable>
-              {latestMessageFrom(myPet?.user_id) ? (
-                <ThemedText type="small" themeColor="textSecondary" style={styles.messageBubble}>
-                  You: {latestMessageFrom(myPet?.user_id)}
-                </ThemedText>
-              ) : null}
-              {latestMessageFrom(partnerPet?.user_id) ? (
-                <ThemedText type="small" themeColor="textSecondary" style={styles.messageBubble}>
-                  Partner: {latestMessageFrom(partnerPet?.user_id)}
-                </ThemedText>
-              ) : null}
-              {!myPet ? (
-                <View style={styles.body}>
-                  <NBPrimaryButton title="Choose your pet" onPress={() => router.push('/pet')} />
-                </View>
-              ) : null}
-            </NBCard>
+            <PetPlayArea
+              pets={[myPet, partnerPet].filter((p): p is UserPet => p !== null)}
+              messageByUserId={visibleMessages}
+              onSelectPet={(pet) => router.push({ pathname: '/pet', params: { petId: pet.id } })}
+            />
+            {!myPet ? (
+              <NBCard>
+                <NBPrimaryButton title="Choose your pet" onPress={() => router.push('/pet')} />
+              </NBCard>
+            ) : null}
 
             <NBCard>
               <View style={styles.composerRow}>
@@ -707,7 +697,6 @@ const styles = StyleSheet.create({
   container: { padding: 20, gap: 16 },
   centered: { alignItems: 'center', gap: 4 },
   body: { marginTop: 12 },
-  messageBubble: { marginTop: 10 },
   composerRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   composerInput: { flex: 1, fontSize: 15, paddingVertical: 4 },
   rowsCard: { paddingVertical: 4 },

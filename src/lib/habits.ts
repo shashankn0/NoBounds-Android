@@ -1,17 +1,20 @@
 import { supabase } from '@/lib/supabase';
 
+export type HabitOwnerScope = 'mine' | 'yours' | 'ours';
+export type HabitCompletionPolicy = 'either' | 'both';
+export type HabitKind = 'standard' | 'weeks_bound' | 'bound_streak';
+
 // a habit — solo (couple_id null) until pairing merges it into the couple
 export type Habit = {
   id: string;
   couple_id: string | null;
   owner_user_id: string;
   title: string;
-  owner_scope: 'mine' | 'yours' | 'ours';
+  owner_scope: HabitOwnerScope;
+  completion_policy: HabitCompletionPolicy;
   sort_order: number;
   created_at: string;
-  // real-backend-only columns — not written by this app yet, but selected so nothing chokes
-  // if a habit created by the real ios app has them set
-  habit_kind: 'standard' | 'weeks_bound' | 'bound_streak';
+  habit_kind: HabitKind;
   reminder_hour: number | null;
 };
 
@@ -23,7 +26,8 @@ export type HabitCompletion = {
   completed: boolean;
 };
 
-const HABIT_COLUMNS = 'id, couple_id, owner_user_id, title, owner_scope, sort_order, created_at, habit_kind, reminder_hour';
+const HABIT_COLUMNS =
+  'id, couple_id, owner_user_id, title, owner_scope, completion_policy, sort_order, created_at, habit_kind, reminder_hour';
 
 // all of the caller's habits, solo + shared (rls filters the rest)
 export async function fetchHabits(): Promise<Habit[]> {
@@ -38,7 +42,7 @@ export async function fetchHabits(): Promise<Habit[]> {
 
 // who's checked off what, for today only
 export async function fetchTodaysCompletions(): Promise<HabitCompletion[]> {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayKey();
   const { data, error } = await supabase
     .from('habit_completions')
     .select('habit_id, user_id, completion_date, completed')
@@ -47,8 +51,19 @@ export async function fetchTodaysCompletions(): Promise<HabitCompletion[]> {
   return (data as HabitCompletion[]) ?? [];
 }
 
-export type HabitOwnerScope = 'mine' | 'yours' | 'ours';
-export type HabitCompletionPolicy = 'either' | 'both';
+// completions across a date range (inclusive) — needed to compute streaks, which look
+// backwards day by day (or week by week for weeks_bound) until an unsatisfied day breaks it
+export async function fetchCompletionsInRange(habitIds: string[], fromDate: string, toDate: string): Promise<HabitCompletion[]> {
+  if (habitIds.length === 0) return [];
+  const { data, error } = await supabase
+    .from('habit_completions')
+    .select('habit_id, user_id, completion_date, completed')
+    .in('habit_id', habitIds)
+    .gte('completion_date', fromDate)
+    .lte('completion_date', toDate);
+  if (error) throw error;
+  return (data as HabitCompletion[]) ?? [];
+}
 
 // creates a habit, solo or shared depending on whether the caller is paired
 export async function createHabit(
@@ -80,18 +95,232 @@ export async function setHabitReminderHour(habitId: string, reminderHour: number
   if (error) throw error;
 }
 
-// flips today's completion for the caller — upsert so re-toggling just overwrites
-export async function toggleHabitToday(habitId: string, completed: boolean): Promise<void> {
+// sets the caller's completion for a specific day — upsert so re-toggling just overwrites.
+// the calendar's day-detail sheet lets you check off a past day, not just today, mirroring
+// ios's CalendarViewModel.toggleCompletion(habitID:date:completed:)
+export async function setHabitCompletion(habitId: string, date: string, completed: boolean): Promise<void> {
   const { data: userData } = await supabase.auth.getUser();
   const userId = userData.user?.id;
   if (!userId) throw new Error('Not signed in');
 
-  const today = new Date().toISOString().slice(0, 10);
   const { error } = await supabase
     .from('habit_completions')
     .upsert(
-      { habit_id: habitId, user_id: userId, completion_date: today, completed, updated_at: new Date().toISOString() },
+      { habit_id: habitId, user_id: userId, completion_date: date, completed, updated_at: new Date().toISOString() },
       { onConflict: 'habit_id,user_id,completion_date' }
     );
   if (error) throw error;
+}
+
+// flips today's completion for the caller
+export async function toggleHabitToday(habitId: string, completed: boolean): Promise<void> {
+  return setHabitCompletion(habitId, todayKey(), completed);
+}
+
+export function todayKey(date: Date = new Date()): string {
+  return dateKey(date);
+}
+
+// yyyy-mm-dd in local time — mirrors ios's HabitDateParser (Calendar.current components, not UTC)
+export function dateKey(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+// mirrors ios's HabitSchedule.applies — weeks_bound is a once-a-week ritual, only relevant on
+// the day it resets (Sunday); standard and bound_streak habits are daily
+export function habitAppliesOn(habit: Habit, date: Date): boolean {
+  if (habit.habit_kind === 'weeks_bound') {
+    return date.getDay() === 0;
+  }
+  return true;
+}
+
+export type HabitDayStatus = {
+  habit: Habit;
+  dateKey: string;
+  isSatisfied: boolean;
+  myCompleted: boolean;
+  partnerCompleted: boolean;
+  canToggle: boolean;
+  isPartiallyComplete: boolean;
+  statusLabel: string;
+};
+
+// system habits (weeks_bound, bound_streak) complete via their linked flows — the Bound camera,
+// a weekly photo post — never by tapping the row like a normal checkbox
+export function canToggleHabit(habit: Habit, currentUserId: string, partnerId: string | null): boolean {
+  if (habit.habit_kind === 'weeks_bound' || habit.habit_kind === 'bound_streak') return false;
+
+  switch (habit.owner_scope) {
+    case 'mine':
+      return habit.owner_user_id === currentUserId;
+    case 'yours':
+      return partnerId != null && habit.owner_user_id !== currentUserId;
+    case 'ours':
+      return true;
+  }
+}
+
+// mirrors ios's HabitCompletionResolver.resolveDayStatus exactly, including the boundStreak/
+// weeksBound status copy — this is what actually makes "ours"/"both required" habits reflect
+// the partner's check-in instead of only ever looking at your own completion row
+export function resolveDayStatus(
+  habit: Habit,
+  dateKeyForDay: string,
+  completions: HabitCompletion[],
+  currentUserId: string,
+  partnerId: string | null
+): HabitDayStatus {
+  const dayCompletions = completions.filter((c) => c.habit_id === habit.id && c.completion_date === dateKeyForDay);
+
+  const myCompleted = dayCompletions.some((c) => c.user_id === currentUserId && c.completed);
+  const ownerCompleted = dayCompletions.some((c) => c.user_id === habit.owner_user_id && c.completed);
+  const partnerCompleted = partnerId != null && dayCompletions.some((c) => c.user_id === partnerId && c.completed);
+  const assigneeCompleted = dayCompletions.some((c) => c.user_id !== habit.owner_user_id && c.completed);
+
+  let isSatisfied: boolean;
+  switch (habit.owner_scope) {
+    case 'mine':
+      isSatisfied = ownerCompleted;
+      break;
+    case 'yours':
+      isSatisfied = partnerId != null && assigneeCompleted;
+      break;
+    case 'ours':
+      isSatisfied =
+        habit.completion_policy === 'either'
+          ? myCompleted || partnerCompleted
+          : partnerId == null
+            ? myCompleted
+            : myCompleted && partnerCompleted;
+      break;
+  }
+
+  const canToggle = canToggleHabit(habit, currentUserId, partnerId);
+  const isPartiallyComplete =
+    habit.owner_scope === 'ours' && habit.completion_policy === 'both' && !isSatisfied && myCompleted !== partnerCompleted;
+
+  const statusLabel = habitStatusLabel(habit, { isSatisfied, myCompleted, assigneeCompleted, partnerCompleted, canToggle, partnerId });
+
+  return {
+    habit,
+    dateKey: dateKeyForDay,
+    isSatisfied,
+    myCompleted,
+    partnerCompleted,
+    canToggle,
+    isPartiallyComplete,
+    statusLabel,
+  };
+}
+
+function habitStatusLabel(
+  habit: Habit,
+  args: {
+    isSatisfied: boolean;
+    myCompleted: boolean;
+    assigneeCompleted: boolean;
+    partnerCompleted: boolean;
+    canToggle: boolean;
+    partnerId: string | null;
+  }
+): string {
+  const { isSatisfied, myCompleted, assigneeCompleted, partnerCompleted, canToggle, partnerId } = args;
+
+  if (habit.habit_kind === 'weeks_bound') {
+    return isSatisfied ? 'Posted this week' : 'Add 1–10 photos from your week';
+  }
+
+  if (habit.habit_kind === 'bound_streak') {
+    if (isSatisfied) return 'Bounds exchanged today';
+    if (myCompleted && !partnerCompleted) return "Waiting on partner's Bound";
+    if (partnerCompleted && !myCompleted) return 'Send a Bound to keep the streak';
+    return 'Both of you send a Bound today';
+  }
+
+  if (isSatisfied) {
+    return habit.owner_scope === 'ours' ? 'Done together' : 'Done';
+  }
+
+  switch (habit.owner_scope) {
+    case 'mine':
+      return canToggle ? 'Your turn' : 'Waiting on partner';
+    case 'yours':
+      if (canToggle) return myCompleted ? 'Done' : 'Your turn';
+      return assigneeCompleted ? 'Partner done' : 'Waiting on partner';
+    case 'ours':
+      if (habit.completion_policy === 'either') {
+        return myCompleted || partnerCompleted ? 'One of you checked in' : 'Either of you can check in';
+      }
+      if (myCompleted && !partnerCompleted) return 'Waiting on partner';
+      if (partnerCompleted && !myCompleted) return 'Your turn';
+      return partnerId == null ? 'Your turn' : 'Both of you';
+  }
+}
+
+// builds today's status for every habit that applies today, mirroring ios's
+// HabitsRepository.dayStatuses (habits + habitAppliesOn filter + resolveDayStatus map)
+export function todaysDayStatuses(
+  habits: Habit[],
+  completions: HabitCompletion[],
+  currentUserId: string,
+  partnerId: string | null,
+  today: Date = new Date()
+): HabitDayStatus[] {
+  const key = dateKey(today);
+  return habits.filter((h) => habitAppliesOn(h, today)).map((h) => resolveDayStatus(h, key, completions, currentUserId, partnerId));
+}
+
+// mirrors ios's HabitStreakCalculator — walks backward (daily for standard/bound_streak,
+// weekly by Sunday for weeks_bound) counting consecutive satisfied days/weeks until one breaks
+export function currentStreak(
+  habit: Habit,
+  completions: HabitCompletion[],
+  currentUserId: string,
+  partnerId: string | null,
+  endingAt: Date = new Date()
+): number {
+  if (habit.habit_kind === 'weeks_bound') {
+    return weeklyStreak(habit, completions, currentUserId, partnerId, endingAt);
+  }
+  return dailyStreak(habit, completions, currentUserId, partnerId, endingAt);
+}
+
+function dailyStreak(habit: Habit, completions: HabitCompletion[], currentUserId: string, partnerId: string | null, endingAt: Date): number {
+  let streak = 0;
+  const cursor = new Date(endingAt);
+  cursor.setHours(0, 0, 0, 0);
+
+  while (true) {
+    const status = resolveDayStatus(habit, dateKey(cursor), completions, currentUserId, partnerId);
+    if (!status.isSatisfied) break;
+    streak += 1;
+    cursor.setDate(cursor.getDate() - 1);
+  }
+  return streak;
+}
+
+function weeklyStreak(habit: Habit, completions: HabitCompletion[], currentUserId: string, partnerId: string | null, endingAt: Date): number {
+  let streak = 0;
+  const cursor = mostRecentSunday(endingAt);
+
+  while (true) {
+    const status = resolveDayStatus(habit, dateKey(cursor), completions, currentUserId, partnerId);
+    if (!status.isSatisfied) break;
+    streak += 1;
+    cursor.setDate(cursor.getDate() - 7);
+  }
+  return streak;
+}
+
+function mostRecentSunday(date: Date): Date {
+  const cursor = new Date(date);
+  cursor.setHours(0, 0, 0, 0);
+  while (cursor.getDay() !== 0) {
+    cursor.setDate(cursor.getDate() - 1);
+  }
+  return cursor;
 }

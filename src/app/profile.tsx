@@ -3,6 +3,7 @@ import { router } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { useState } from 'react';
 import { Image, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { NBCard } from '@/components/nb-card';
 import { NBPrimaryButton } from '@/components/nb-button';
@@ -19,6 +20,7 @@ const deviceTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
 export default function ProfileScreen() {
   const theme = useTheme();
+  const insets = useSafeAreaInsets();
   const { session, profile, couple, refreshProfile, avatarSource, setAvatarSource, myAvatarUrl, partnerAvatarUrl } =
     useSession();
   const [name, setName] = useState(profile?.display_name ?? '');
@@ -89,7 +91,7 @@ export default function ProfileScreen() {
 
   return (
     <ThemedView style={{ flex: 1 }}>
-      <ScrollView contentContainerStyle={styles.container}>
+      <ScrollView contentContainerStyle={[styles.container, { paddingBottom: insets.bottom + 20 }]}>
         <View style={styles.avatarSection}>
           {couple ? (
             <View style={styles.avatarPairRow}>

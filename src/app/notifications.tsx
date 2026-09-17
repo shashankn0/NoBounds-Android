@@ -1,6 +1,7 @@
 import { useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { FlatList, Pressable, StyleSheet } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { NBCard } from '@/components/nb-card';
 import { ThemedText } from '@/components/themed-text';
@@ -10,6 +11,7 @@ import type { AppNotification } from '@/lib/database-types';
 import { fetchNotifications, markNotificationRead } from '@/lib/notifications';
 
 export default function NotificationsScreen() {
+  const insets = useSafeAreaInsets();
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -58,7 +60,7 @@ export default function NotificationsScreen() {
         <FlatList
           data={notifications}
           keyExtractor={(item) => item.id}
-          contentContainerStyle={styles.list}
+          contentContainerStyle={[styles.list, { paddingBottom: insets.bottom + 20 }]}
           renderItem={({ item }) => (
             <Pressable onPress={() => onOpen(item)}>
               <NBCard elevated={!item.read_at}>

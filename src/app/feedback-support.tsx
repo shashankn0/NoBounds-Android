@@ -2,6 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as WebBrowser from 'expo-web-browser';
 import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { NBCard } from '@/components/nb-card';
 import { NBPrimaryButton } from '@/components/nb-button';
@@ -20,6 +21,7 @@ const KINDS: { id: 'feedback' | 'bug_report'; label: string }[] = [
 
 export default function FeedbackSupportScreen() {
   const theme = useTheme();
+  const insets = useSafeAreaInsets();
   const [kind, setKind] = useState<'feedback' | 'bug_report'>('feedback');
   const [message, setMessage] = useState('');
   const [sending, setSending] = useState(false);
@@ -43,7 +45,7 @@ export default function FeedbackSupportScreen() {
 
   return (
     <ThemedView style={{ flex: 1 }}>
-      <ScrollView contentContainerStyle={styles.container}>
+      <ScrollView contentContainerStyle={[styles.container, { paddingBottom: insets.bottom + 20 }]}>
         <Pressable onPress={() => WebBrowser.openBrowserAsync(HELP_CENTER_URL)}>
           <NBCard style={styles.helpRow}>
             <View style={[styles.helpIcon, { backgroundColor: theme.accentMuted }]}>

@@ -12,6 +12,18 @@ export async function fetchNotifications(): Promise<AppNotification[]> {
   return (data as AppNotification[]) ?? [];
 }
 
+// drives the bell icon's unread styling in ScreenHeader — mirrors ios's
+// router.unreadNotificationCount (an exact count, not just a boolean, though only its
+// zero/non-zero-ness is used for styling today)
+export async function fetchUnreadNotificationCount(): Promise<number> {
+  const { count, error } = await supabase
+    .from('notifications')
+    .select('*', { count: 'exact', head: true })
+    .is('read_at', null);
+  if (error) throw error;
+  return count ?? 0;
+}
+
 export async function markNotificationRead(id: string): Promise<void> {
   const { error } = await supabase.from('notifications').update({ read_at: new Date().toISOString() }).eq('id', id);
   if (error) throw error;

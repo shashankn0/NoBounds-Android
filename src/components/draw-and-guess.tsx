@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { PanResponder, Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { useMemo, useRef, useState } from 'react';
+import { PanResponder, StyleSheet, View } from 'react-native';
 import Svg, { Polyline } from 'react-native-svg';
 
 import { NBCard } from '@/components/nb-card';
@@ -7,101 +8,42 @@ import { NBPrimaryButton, NBSecondaryButton } from '@/components/nb-button';
 import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
-import { supabase } from '@/lib/supabase';
 
-// no table for this on the real backend, and we're not allowed to add one — a realtime
-// broadcast channel gives a genuinely live connection between both partners without
-// persisting anything to the database at all
+// ios plays this pass-the-phone: one device, players take turns handing it back and forth —
+// no live connection, no backend table, nothing persisted. round state is plain local state.
 const WORDS = ['pizza', 'guitar', 'umbrella', 'castle', 'rainbow', 'robot', 'volcano', 'penguin', 'bicycle', 'lighthouse'];
 
 type Point = { x: number; y: number };
 type Stroke = Point[];
-type Guess = { text: string; correct: boolean };
+type RoundResult = { word: string; correct: boolean };
 
-export function DrawAndGuess({ coupleId }: { coupleId: string }) {
+function randomWord() {
+  return WORDS[Math.floor(Math.random() * WORDS.length)];
+}
+
+export function DrawAndGuess() {
   const theme = useTheme();
-  const channel = useMemo(() => supabase.channel(`draw-and-guess:${coupleId}`), [coupleId]);
-  const [role, setRole] = useState<'drawer' | 'guesser' | null>(null);
-  const [word, setWord] = useState<string | null>(null);
+  const [roundNumber, setRoundNumber] = useState(1);
+  const [word, setWord] = useState(randomWord);
   const [strokes, setStrokes] = useState<Stroke[]>([]);
-  const [guessDraft, setGuessDraft] = useState('');
-  const [guesses, setGuesses] = useState<Guess[]>([]);
-
-  // panresponder callbacks are created exactly once below, so they'd otherwise close over
-  // stale state forever — refs stay current across renders without that problem
-  const roleRef = useRef(role);
-  useEffect(() => {
-    roleRef.current = role;
-  }, [role]);
+  const [totalCorrect, setTotalCorrect] = useState(0);
+  const [roundResult, setRoundResult] = useState<RoundResult | null>(null);
   const strokeCountRef = useRef(0);
 
-  useEffect(() => {
-    channel
-      .on('broadcast', { event: 'point' }, ({ payload }) => {
-        setStrokes((prev) => {
-          const next = [...prev];
-          const last = next[next.length - 1];
-          if (last && payload.strokeIndex === next.length - 1) {
-            next[next.length - 1] = [...last, { x: payload.x, y: payload.y }];
-          } else {
-            next.push([{ x: payload.x, y: payload.y }]);
-          }
-          return next;
-        });
-      })
-      .on('broadcast', { event: 'clear' }, () => {
-        setStrokes([]);
-        setGuesses([]);
-      })
-      .on('broadcast', { event: 'guess' }, ({ payload }) => {
-        // only the drawer's client knows the word, so only it judges correctness
-        setWord((currentWord) => {
-          if (currentWord) {
-            const correct = payload.text.trim().toLowerCase() === currentWord.toLowerCase();
-            channel.send({ type: 'broadcast', event: 'guess-result', payload: { text: payload.text, correct } });
-          }
-          return currentWord;
-        });
-      })
-      .on('broadcast', { event: 'guess-result' }, ({ payload }) => {
-        setGuesses((prev) => [...prev, { text: payload.text, correct: payload.correct }]);
-      })
-      .subscribe();
+  // round 1 = Player 1 draws, round 2 = Player 2, alternating — whoever is holding the phone
+  // this round is always the drawer, so there's nothing to pick ahead of time
+  const drawerIsPlayerOne = roundNumber % 2 === 1;
 
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [channel]);
-
-  function pickRole(next: 'drawer' | 'guesser') {
-    setRole(next);
-    if (next === 'drawer') {
-      setWord(WORDS[Math.floor(Math.random() * WORDS.length)]);
-    }
-  }
-
-  function onNewWord() {
-    setWord(WORDS[Math.floor(Math.random() * WORDS.length)]);
-    setStrokes([]);
-    setGuesses([]);
-    strokeCountRef.current = 0;
-    channel.send({ type: 'broadcast', event: 'clear', payload: {} });
-  }
-
-  // useMemo (not useRef().current) so panHandlers is a plain memoized value, not a ref read
-  // during render — the responder itself still only gets created once, via the [] deps.
   const panResponder = useMemo(
     () =>
-      // eslint-disable-next-line react-hooks/refs -- callbacks below only run from real touch events, never during render
+      // eslint-disable-next-line react-hooks/refs -- strokeCountRef is only read/written from real touch events, never during render
       PanResponder.create({
-        onStartShouldSetPanResponder: () => roleRef.current === 'drawer',
-        onMoveShouldSetPanResponder: () => roleRef.current === 'drawer',
+        onStartShouldSetPanResponder: () => true,
+        onMoveShouldSetPanResponder: () => true,
         onPanResponderGrant: (evt) => {
           const { locationX, locationY } = evt.nativeEvent;
-          const strokeIndex = strokeCountRef.current;
           strokeCountRef.current += 1;
           setStrokes((prev) => [...prev, [{ x: locationX, y: locationY }]]);
-          channel.send({ type: 'broadcast', event: 'point', payload: { x: locationX, y: locationY, strokeIndex } });
         },
         onPanResponderMove: (evt) => {
           const { locationX, locationY } = evt.nativeEvent;
@@ -111,50 +53,81 @@ export function DrawAndGuess({ coupleId }: { coupleId: string }) {
             next[strokeIndex] = [...next[strokeIndex], { x: locationX, y: locationY }];
             return next;
           });
-          channel.send({ type: 'broadcast', event: 'point', payload: { x: locationX, y: locationY, strokeIndex } });
         },
       }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally created once
     []
   );
 
-  function onSubmitGuess() {
-    if (guessDraft.trim().length === 0) return;
-    channel.send({ type: 'broadcast', event: 'guess', payload: { text: guessDraft.trim() } });
-    setGuessDraft('');
+  function onUndo() {
+    setStrokes((prev) => prev.slice(0, -1));
+    strokeCountRef.current = Math.max(0, strokeCountRef.current - 1);
   }
 
-  if (!role) {
+  function onClear() {
+    setStrokes([]);
+    strokeCountRef.current = 0;
+  }
+
+  function onGotIt() {
+    setTotalCorrect((n) => n + 1);
+    setRoundResult({ word, correct: true });
+  }
+
+  function onDone() {
+    setRoundResult({ word, correct: false });
+  }
+
+  function onNextRound() {
+    setRoundNumber((n) => n + 1);
+    setRoundResult(null);
+    setWord(randomWord());
+    setStrokes([]);
+    strokeCountRef.current = 0;
+  }
+
+  if (roundResult) {
+    const nextDrawerIsPlayerOne = (roundNumber + 1) % 2 === 1;
     return (
-      <NBCard style={styles.card}>
-        <ThemedText type="smallBold">Draw &amp; Guess</ThemedText>
-        <ThemedText type="small" themeColor="textSecondary" style={styles.body}>
-          One of you draws, the other guesses — live, over a real connection.
+      <View style={styles.resultScreen}>
+        <Ionicons name={roundResult.correct ? 'checkmark-circle' : 'bulb'} size={44} color={theme.accent} />
+        <ThemedText type="title" style={styles.centeredText}>
+          {roundResult.correct ? 'Got it!' : 'So close!'}
         </ThemedText>
-        <View style={styles.roleRow}>
-          <NBPrimaryButton title="I'll draw" onPress={() => pickRole('drawer')} />
-          <NBSecondaryButton title="I'll guess" onPress={() => pickRole('guesser')} />
+        <ThemedText type="default" style={styles.centeredText}>
+          The word was &ldquo;{roundResult.word}&rdquo;.
+        </ThemedText>
+        <ThemedText type="small" themeColor="textSecondary" style={styles.centeredText}>
+          {totalCorrect} guessed right in {roundNumber} round{roundNumber === 1 ? '' : 's'}.
+        </ThemedText>
+        <View style={styles.resultButton}>
+          <NBPrimaryButton
+            title={`Next round — Player ${nextDrawerIsPlayerOne ? 1 : 2} draws`}
+            onPress={onNextRound}
+          />
         </View>
-      </NBCard>
+      </View>
     );
   }
 
   return (
-    <NBCard style={styles.card}>
-      {role === 'drawer' ? (
-        <View style={styles.header}>
-          <ThemedText type="smallBold">Draw: {word}</ThemedText>
-          <Pressable onPress={onNewWord}>
-            <ThemedText type="link" themeColor="accent">
-              New word
-            </ThemedText>
-          </Pressable>
-        </View>
-      ) : (
-        <ThemedText type="smallBold">Guess what your partner is drawing</ThemedText>
-      )}
+    <View style={styles.screen}>
+      <View style={styles.roundRow}>
+        <ThemedText type="smallBold">Round {roundNumber}</ThemedText>
+        <ThemedText type="smallBold" themeColor="accent">
+          Guessed: {totalCorrect}
+        </ThemedText>
+      </View>
 
-      <View style={[styles.canvas, { borderColor: theme.border }]} {...panResponder.panHandlers}>
+      <NBCard style={styles.wordCard}>
+        <ThemedText type="small" themeColor="textSecondary" style={styles.centeredText}>
+          Draw this — don&apos;t say it out loud!
+        </ThemedText>
+        <ThemedText type="title" themeColor="accent" style={styles.centeredText}>
+          {word}
+        </ThemedText>
+      </NBCard>
+
+      <View style={[styles.canvas, { backgroundColor: theme.surface }]} {...panResponder.panHandlers}>
         <Svg width="100%" height="100%">
           {strokes.map((stroke, i) => (
             <Polyline
@@ -170,44 +143,33 @@ export function DrawAndGuess({ coupleId }: { coupleId: string }) {
         </Svg>
       </View>
 
-      {role === 'guesser' ? (
-        <View style={styles.guessRow}>
-          <TextInput
-            placeholder="Type your guess"
-            placeholderTextColor={theme.textSecondary}
-            value={guessDraft}
-            onChangeText={setGuessDraft}
-            onSubmitEditing={onSubmitGuess}
-            style={[styles.guessInput, { color: theme.textPrimary, borderColor: theme.border }]}
-          />
-          <Pressable onPress={onSubmitGuess}>
-            <ThemedText type="link" themeColor="accent">
-              Send
-            </ThemedText>
-          </Pressable>
+      <View style={styles.toolRow}>
+        <View style={styles.toolButton}>
+          <NBSecondaryButton title="Undo" onPress={onUndo} disabled={strokes.length === 0} />
         </View>
-      ) : null}
+        <View style={styles.toolButton}>
+          <NBSecondaryButton title="Clear" onPress={onClear} disabled={strokes.length === 0} />
+        </View>
+      </View>
 
-      {guesses.length > 0 ? (
-        <View style={styles.guessList}>
-          {guesses.slice(-4).map((g, i) => (
-            <ThemedText key={i} type="small" themeColor={g.correct ? 'accent' : 'textSecondary'}>
-              {g.text} {g.correct ? '— correct! 🎉' : ''}
-            </ThemedText>
-          ))}
-        </View>
-      ) : null}
-    </NBCard>
+      {/* two distinct endings: the other person actually said the word, or the drawer gives up
+          and hands the phone over anyway — ios only shows the give-up copy in the one reference
+          screenshot available, so "They got it!" is this port's own addition to make the round
+          actually scoreable without a second device to auto-detect a spoken guess */}
+      <NBPrimaryButton title="They got it! 🎉" onPress={onGotIt} />
+      <NBSecondaryButton title={`Done — pass to Player ${drawerIsPlayerOne ? 2 : 1}`} onPress={onDone} />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  card: { gap: Spacing.two },
-  body: { marginBottom: Spacing.two },
-  roleRow: { flexDirection: 'row', gap: Spacing.two, marginTop: Spacing.two },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  canvas: { width: '100%', height: 260, borderWidth: 1, borderRadius: 12, overflow: 'hidden' },
-  guessRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
-  guessInput: { flex: 1, borderWidth: 1, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 10, fontSize: 15 },
-  guessList: { gap: 4 },
+  screen: { gap: Spacing.three },
+  roundRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  wordCard: { alignItems: 'center', gap: 4 },
+  centeredText: { textAlign: 'center' },
+  canvas: { width: '100%', aspectRatio: 1, borderRadius: 20, overflow: 'hidden' },
+  toolRow: { flexDirection: 'row', gap: Spacing.two },
+  toolButton: { flex: 1 },
+  resultScreen: { alignItems: 'center', gap: Spacing.two, paddingTop: 60 },
+  resultButton: { alignSelf: 'stretch', marginTop: Spacing.three },
 });

@@ -1,6 +1,7 @@
 import { router } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Switch, TextInput, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { FormHeader } from '@/components/form-header';
 import { NBCard } from '@/components/nb-card';
@@ -26,6 +27,7 @@ const POLICIES: { id: HabitCompletionPolicy; label: string; caption: string }[] 
 
 export default function HabitFormScreen() {
   const theme = useTheme();
+  const insets = useSafeAreaInsets();
   const { couple } = useSession();
   const [page, setPage] = useState<Page>('habit');
   const [title, setTitle] = useState('');
@@ -68,7 +70,7 @@ export default function HabitFormScreen() {
         onRightPress={onSave}
         rightDisabled={title.trim().length === 0 || saving}
       />
-      <ScrollView contentContainerStyle={styles.container}>
+      <ScrollView contentContainerStyle={[styles.container, { paddingBottom: insets.bottom + 20 }]}>
         <View style={[styles.segmented, { backgroundColor: theme.backgroundSecondary }]}>
           {(['habit', 'important_date'] as Page[]).map((id) => (
             <Pressable key={id} onPress={() => setPage(id)} style={styles.segmentWrap}>

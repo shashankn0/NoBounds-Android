@@ -97,3 +97,10 @@ export function previewScaleFor(key: string): number {
   if (key === 'rat_1' || key === 'rat_2' || key === 'bird_1' || key === 'bird_2') return 2.5;
   return 2;
 }
+
+// matches ambientpetentity.swift's speciesScale — the larger scale used for the free-roaming
+// play area sprite, as opposed to the smaller static preview-row scale above
+export function playAreaScaleFor(key: string): number {
+  if (key === 'rat_1' || key === 'rat_2' || key === 'bird_1' || key === 'bird_2') return 2.6;
+  return 2.2;
+}

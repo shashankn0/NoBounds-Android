@@ -9,24 +9,29 @@ type PetSpriteProps = {
   speciesKey: PetSpeciesKey;
   animation?: PetAnimation;
   scale?: number;
+  flipHorizontally?: boolean;
+  // freezes the sprite on its first frame — mirrors ios's PetSpriteView `paused` (used while napping)
+  paused?: boolean;
 };
 
 // mirrors core/pet/petspriteview.swift — crops one frame out of a horizontal sprite-sheet png,
 // advancing frames on a timer instead of swift's timelineview(.animation(...))
-export function PetSprite({ speciesKey, animation = 'idle', scale = 2 }: PetSpriteProps) {
+export function PetSprite({ speciesKey, animation = 'idle', scale = 2, flipHorizontally = false, paused = false }: PetSpriteProps) {
   const [frame, setFrame] = useState(0);
   const info = PET_SPECIES[speciesKey];
   const frameCount = info.frames[animation];
 
   useEffect(() => {
+    if (paused) return;
     const id = setInterval(() => {
       setFrame((f) => (f + 1) % frameCount);
     }, 1000 / FPS);
     return () => clearInterval(id);
-  }, [frameCount, speciesKey, animation]);
+  }, [frameCount, speciesKey, animation, paused]);
 
   const size = info.frameSize * scale;
   const sheetWidth = info.frameSize * frameCount * scale;
+  const shownFrame = paused ? 0 : frame;
 
   return (
     <View style={{ width: size, height: size, overflow: 'hidden' }}>
@@ -35,7 +40,7 @@ export function PetSprite({ speciesKey, animation = 'idle', scale = 2 }: PetSpri
         style={{
           width: sheetWidth,
           height: size,
-          transform: [{ translateX: -frame * size }],
+          transform: [{ translateX: -shownFrame * size }, { scaleX: flipHorizontally ? -1 : 1 }],
         }}
         resizeMode="stretch"
       />

@@ -1,8 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router, useFocusEffect } from 'expo-router';
-import { useCallback, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { useCallback, useMemo, useState } from 'react';
+import { ScrollView, StyleSheet, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { HabitRow } from '@/components/habit-row';
 import { NBCard } from '@/components/nb-card';
 import { NBPrimaryButton } from '@/components/nb-button';
 import { ThemedText } from '@/components/themed-text';
@@ -10,14 +12,27 @@ import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
 import { useSession } from '@/contexts/session-context';
 import { useTheme } from '@/hooks/use-theme';
-import { fetchHabits, fetchTodaysCompletions, toggleHabitToday, type Habit, type HabitCompletion } from '@/lib/habits';
+import {
+  currentStreak,
+  dateKey,
+  fetchCompletionsInRange,
+  fetchHabits,
+  toggleHabitToday,
+  todaysDayStatuses,
+  type Habit,
+  type HabitCompletion,
+  type HabitDayStatus,
+} from '@/lib/habits';
 import type { ImportantDate } from '@/lib/database-types';
 import { fetchImportantDates } from '@/lib/important-dates';
+
+const STREAK_LOOKBACK_DAYS = 60;
 
 // full habit list + toggle — the timeline tab's calendar card is a smaller summary of this
 export default function CalendarScreen() {
   const theme = useTheme();
-  const { session } = useSession();
+  const insets = useSafeAreaInsets();
+  const { session, couple } = useSession();
   const [habits, setHabits] = useState<Habit[]>([]);
   const [completions, setCompletions] = useState<HabitCompletion[]>([]);
   const [importantDates, setImportantDates] = useState<ImportantDate[]>([]);
@@ -27,9 +42,16 @@ export default function CalendarScreen() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [habitRows, completionRows, dateRows] = await Promise.all([
-        fetchHabits(),
-        fetchTodaysCompletions(),
+      const habitRows = await fetchHabits();
+      const to = new Date();
+      const from = new Date();
+      from.setDate(from.getDate() - STREAK_LOOKBACK_DAYS);
+      const [completionRows, dateRows] = await Promise.all([
+        fetchCompletionsInRange(
+          habitRows.map((h) => h.id),
+          dateKey(from),
+          dateKey(to)
+        ),
         fetchImportantDates(),
       ]);
       setHabits(habitRows);
@@ -48,10 +70,18 @@ export default function CalendarScreen() {
     }, [load])
   );
 
-  async function onToggle(habit: Habit, currentlyDone: boolean) {
+  const currentUserId = session?.user.id ?? null;
+  const partnerId = couple?.partnerId ?? null;
+
+  const habitStatuses = useMemo<HabitDayStatus[]>(() => {
+    if (!currentUserId) return [];
+    return todaysDayStatuses(habits, completions, currentUserId, partnerId);
+  }, [habits, completions, currentUserId, partnerId]);
+
+  async function onToggle(status: HabitDayStatus) {
     setError(null);
     try {
-      await toggleHabitToday(habit.id, !currentlyDone);
+      await toggleHabitToday(status.habit.id, !status.myCompleted);
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not update habit');
@@ -60,7 +90,7 @@ export default function CalendarScreen() {
 
   return (
     <ThemedView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.list}>
+      <ScrollView contentContainerStyle={[styles.list, { paddingBottom: insets.bottom + 20 }]}>
         <View style={styles.headingRow}>
           <ThemedText type="subtitle">Habits</ThemedText>
           <NBPrimaryButton title="Add habit" onPress={() => router.push('/habit-form')} />
@@ -70,7 +100,7 @@ export default function CalendarScreen() {
           <ThemedText type="default" themeColor="textSecondary">
             Loading…
           </ThemedText>
-        ) : habits.length === 0 ? (
+        ) : habitStatuses.length === 0 ? (
           <NBCard style={styles.centered}>
             <Ionicons name="checkmark-done-circle" size={40} color={theme.accent} style={styles.icon} />
             <ThemedText type="default" themeColor="textSecondary" style={styles.centeredText}>
@@ -78,29 +108,15 @@ export default function CalendarScreen() {
             </ThemedText>
           </NBCard>
         ) : (
-          habits.map((habit) => {
-            const myCompletion = completions.find(
-              (c) => c.habit_id === habit.id && c.user_id === session?.user.id
-            );
-            const doneToday = myCompletion?.completed ?? false;
-            return (
-              <Pressable key={habit.id} onPress={() => onToggle(habit, doneToday)}>
-                <NBCard style={styles.habitRow}>
-                  <Ionicons
-                    name={doneToday ? 'checkmark-circle' : 'ellipse-outline'}
-                    size={22}
-                    color={doneToday ? theme.accent : theme.textSecondary}
-                  />
-                  <View style={styles.habitText}>
-                    <ThemedText type="default">{habit.title}</ThemedText>
-                    <ThemedText type="small" themeColor="textSecondary">
-                      {habit.owner_scope} · {habit.couple_id ? 'shared' : 'solo'}
-                    </ThemedText>
-                  </View>
-                </NBCard>
-              </Pressable>
-            );
-          })
+          habitStatuses.map((status) => (
+            <NBCard key={status.habit.id}>
+              <HabitRow
+                status={status}
+                streak={currentUserId ? currentStreak(status.habit, completions, currentUserId, partnerId) : 0}
+                onToggle={onToggle}
+              />
+            </NBCard>
+          ))
         )}
 
         <View style={styles.headingRow}>

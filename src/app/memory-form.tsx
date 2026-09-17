@@ -3,6 +3,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { router } from 'expo-router';
 import { useState } from 'react';
 import { Image, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { FormHeader } from '@/components/form-header';
 import { NBCard } from '@/components/nb-card';
@@ -17,6 +18,7 @@ const MAX_PHOTOS = 10;
 
 export default function MemoryFormScreen() {
   const theme = useTheme();
+  const insets = useSafeAreaInsets();
   const { session, couple } = useSession();
   // keeps the full picked asset (not just the uri) so the real mime type survives to upload time
   const [photos, setPhotos] = useState<ImagePicker.ImagePickerAsset[]>([]);
@@ -95,7 +97,7 @@ export default function MemoryFormScreen() {
         onRightPress={onSave}
         rightDisabled={title.trim().length === 0 || saving}
       />
-      <ScrollView contentContainerStyle={styles.container}>
+      <ScrollView contentContainerStyle={[styles.container, { paddingBottom: insets.bottom + 20 }]}>
         <ThemedText type="title">Photos</ThemedText>
         <ThemedText type="small" themeColor="textSecondary">
           Add photos to your memory

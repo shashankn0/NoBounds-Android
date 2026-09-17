@@ -1,6 +1,7 @@
 import { DarkTheme, DefaultTheme, Stack, ThemeProvider, type Theme } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect, useMemo, useRef } from 'react';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
 import { Palettes, type PaletteId } from '@/constants/palettes';
@@ -78,14 +79,46 @@ function RootNavigator() {
           <Stack.Screen name="feedback-support" options={{ headerShown: true, title: 'Feedback & support' }} />
           <Stack.Screen name="request-data" options={{ presentation: 'modal' }} />
           <Stack.Screen name="pet" options={{ headerShown: true, title: 'Pet' }} />
-          <Stack.Screen name="date-ideas" options={{ headerShown: true, title: 'Date ideas' }} />
-          <Stack.Screen name="gifts" options={{ headerShown: true, title: 'Gift ideas' }} />
+          <Stack.Screen name="date-ideas" options={{ headerShown: false }} />
+          <Stack.Screen name="date-idea-form" options={{ presentation: 'modal' }} />
+          <Stack.Screen name="gifts" options={{ headerShown: false }} />
+          <Stack.Screen name="gift-idea-form" options={{ presentation: 'modal' }} />
           <Stack.Screen name="calendar" options={{ headerShown: true, title: 'Calendar' }} />
-          <Stack.Screen name="cycle-tracking" options={{ headerShown: true, title: 'Cycle tracking' }} />
-          <Stack.Screen name="weekly-share" options={{ headerShown: true, title: 'Weekly share' }} />
+          <Stack.Screen name="cycle-tracking" options={{ headerShown: false }} />
+          <Stack.Screen name="cycle-sharing-settings" options={{ headerShown: true, title: 'Sharing settings' }} />
+          <Stack.Screen name="weekly-share" options={{ presentation: 'modal' }} />
           <Stack.Screen name="habit-form" options={{ presentation: 'modal' }} />
           <Stack.Screen name="memory-form" options={{ presentation: 'modal' }} />
-          <Stack.Screen name="extensions" options={{ presentation: 'modal' }} />
+          <Stack.Screen
+            name="extensions"
+            options={{
+              presentation: 'formSheet',
+              sheetAllowedDetents: [0.5, 1],
+              sheetGrabberVisible: true,
+              sheetInitialDetentIndex: 0,
+              sheetExpandsWhenScrolledToEdge: true,
+            }}
+          />
+          <Stack.Screen
+            name="day-habits"
+            options={{
+              presentation: 'formSheet',
+              sheetAllowedDetents: [0.5, 1],
+              sheetGrabberVisible: true,
+              sheetInitialDetentIndex: 0,
+              sheetExpandsWhenScrolledToEdge: true,
+            }}
+          />
+          <Stack.Screen
+            name="cycle-log"
+            options={{
+              presentation: 'formSheet',
+              sheetAllowedDetents: [0.75, 1],
+              sheetGrabberVisible: true,
+              sheetInitialDetentIndex: 0,
+              sheetExpandsWhenScrolledToEdge: true,
+            }}
+          />
           <Stack.Screen name="photo-detail" options={{ headerShown: false }} />
         </Stack.Protected>
       </Stack>
@@ -95,11 +128,13 @@ function RootNavigator() {
 
 export default function RootLayout() {
   return (
-    <PaletteProvider>
-      <SessionProvider>
-        <AnimatedSplashOverlay />
-        <RootNavigator />
-      </SessionProvider>
-    </PaletteProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <PaletteProvider>
+        <SessionProvider>
+          <AnimatedSplashOverlay />
+          <RootNavigator />
+        </SessionProvider>
+      </PaletteProvider>
+    </GestureHandlerRootView>
   );
 }

@@ -1,170 +1,134 @@
-import { useFocusEffect } from 'expo-router';
-import { useCallback, useState } from 'react';
-import { Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { router } from 'expo-router';
+import { useState } from 'react';
+import { Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { FormHeader } from '@/components/form-header';
 import { NBCard } from '@/components/nb-card';
-import { NBPrimaryButton } from '@/components/nb-button';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { Spacing } from '@/constants/theme';
 import { useSession } from '@/contexts/session-context';
 import { useTheme } from '@/hooks/use-theme';
-import type { CoupleWeeklyShare, WeeklyShareKind } from '@/lib/database-types';
-import { supabase } from '@/lib/supabase';
-import { fetchThisWeeksShare } from '@/lib/weekly-share';
+import type { WeeklyShareKind } from '@/lib/database-types';
+import { normalizedWeeklyShareUrl, upsertWeeklyShare } from '@/lib/weekly-share';
 
+// port of features/weeklyshare/createweeklysharesheet.swift — a compose-only form. it always
+// replaces whatever the couple has featured this week, it never shows/edits the existing share
+// in place (that read-only view lives on the home card, not here).
 const KINDS: { id: WeeklyShareKind; label: string }[] = [
   { id: 'message', label: 'Message' },
   { id: 'quote', label: 'Quote' },
   { id: 'link', label: 'Link' },
 ];
 
+const BODY_PLACEHOLDER: Record<WeeklyShareKind, string> = {
+  message: 'Write something for your partner…',
+  quote: "A quote that's been on your mind…",
+  link: '',
+};
+
 export default function WeeklyShareScreen() {
   const theme = useTheme();
-  const { session, couple } = useSession();
-  const [share, setShare] = useState<CoupleWeeklyShare | null>(null);
+  const insets = useSafeAreaInsets();
+  const { couple } = useSession();
   const [kind, setKind] = useState<WeeklyShareKind>('message');
-  const [draft, setDraft] = useState('');
-  const [url, setUrl] = useState('');
-  const [loading, setLoading] = useState(true);
+  const [bodyText, setBodyText] = useState('');
+  const [urlText, setUrlText] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    if (!couple) {
-      setLoading(false);
-      return;
-    }
-    setLoading(true);
-    setError(null);
-    try {
-      setShare(await fetchThisWeeksShare(couple.id));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not load this week’s share');
-    } finally {
-      setLoading(false);
-    }
-  }, [couple]);
+  const trimmedBody = bodyText.trim();
+  const normalizedUrl = kind === 'link' ? normalizedWeeklyShareUrl(urlText) : null;
+  const canSave = !saving && (kind === 'link' ? normalizedUrl !== null : trimmedBody.length > 0);
 
-  useFocusEffect(
-    useCallback(() => {
-      load();
-    }, [load])
-  );
-
-  async function onPost() {
-    if (!couple || !session || draft.trim().length === 0) return;
+  async function onSave() {
+    if (!couple || !canSave) return;
     setSaving(true);
     setError(null);
-    const startOfWeek = new Date();
-    startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay());
-    const { error: insertError } = await supabase.from('couple_weekly_shares').insert({
-      couple_id: couple.id,
-      created_by: session.user.id,
-      week_start: startOfWeek.toISOString().slice(0, 10),
-      kind,
-      body: draft.trim(),
-      url: kind === 'link' ? url.trim() || null : null,
-    });
-    setSaving(false);
-    if (insertError) {
-      setError(insertError.message);
-      return;
+    try {
+      await upsertWeeklyShare(couple.id, kind, trimmedBody, kind === 'link' ? normalizedUrl : null);
+      router.back();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not save your share');
+    } finally {
+      setSaving(false);
     }
-    setDraft('');
-    setUrl('');
-    await load();
-  }
-
-  if (!couple) {
-    return (
-      <ThemedView style={styles.container}>
-        <ThemedText type="default" themeColor="textSecondary">
-          Weekly share unlocks once you connect with your partner.
-        </ThemedText>
-      </ThemedView>
-    );
   }
 
   return (
-    <ThemedView style={styles.container}>
-      {loading ? (
-        <ThemedText type="default" themeColor="textSecondary">
-          Loading…
-        </ThemedText>
-      ) : share ? (
+    <ThemedView style={{ flex: 1 }}>
+      <FormHeader
+        title="This week's share"
+        leftLabel="Cancel"
+        onLeftPress={() => router.back()}
+        rightLabel={saving ? 'Saving…' : 'Share'}
+        onRightPress={onSave}
+        rightDisabled={!canSave}
+      />
+      <ScrollView contentContainerStyle={[styles.container, { paddingBottom: insets.bottom + 20 }]}>
+        <View style={[styles.segmented, { backgroundColor: theme.backgroundSecondary }]}>
+          {KINDS.map((k) => (
+            <Pressable key={k.id} onPress={() => setKind(k.id)} style={styles.segmentWrap}>
+              <View style={[styles.segment, kind === k.id && { backgroundColor: theme.surface }]}>
+                <ThemedText type="smallBold">{k.label}</ThemedText>
+              </View>
+            </Pressable>
+          ))}
+        </View>
+
         <NBCard>
-          <ThemedText type="title" style={styles.quote}>
-            {share.body}
+          <ThemedText type="small" themeColor="textSecondary" style={styles.sectionLabel}>
+            {kind === 'link' ? 'Link' : KINDS.find((k) => k.id === kind)?.label}
           </ThemedText>
-          {share.kind === 'link' && share.url ? (
-            <ThemedText type="link" themeColor="accent" style={styles.body}>
-              {share.url}
-            </ThemedText>
-          ) : null}
-        </NBCard>
-      ) : (
-        <NBCard>
-          <ThemedText type="default" themeColor="textSecondary">
-            Nobody&apos;s shared anything this week yet.
-          </ThemedText>
-          <View style={styles.kindRow}>
-            {KINDS.map((k) => {
-              const active = kind === k.id;
-              return (
-                <Pressable
-                  key={k.id}
-                  onPress={() => setKind(k.id)}
-                  style={[
-                    styles.kindChip,
-                    { borderColor: active ? theme.accent : theme.border },
-                    active && { backgroundColor: theme.accentMuted },
-                  ]}>
-                  <ThemedText type="small">{k.label}</ThemedText>
-                </Pressable>
-              );
-            })}
-          </View>
-          <TextInput
-            placeholder={kind === 'quote' ? 'A quote worth sharing' : kind === 'link' ? "What's this link about?" : 'A message for the two of you'}
-            placeholderTextColor={theme.textSecondary}
-            value={draft}
-            onChangeText={setDraft}
-            multiline
-            style={[styles.input, { color: theme.textPrimary, borderColor: theme.border }]}
-          />
           {kind === 'link' ? (
+            <>
+              <TextInput
+                placeholder="https://…"
+                placeholderTextColor={theme.textSecondary}
+                value={urlText}
+                onChangeText={setUrlText}
+                autoCapitalize="none"
+                autoCorrect={false}
+                keyboardType="url"
+                style={[styles.input, { color: theme.textPrimary, borderColor: theme.border }]}
+              />
+              <TextInput
+                placeholder="Caption (optional)"
+                placeholderTextColor={theme.textSecondary}
+                value={bodyText}
+                onChangeText={setBodyText}
+                multiline
+                style={[styles.input, styles.multilineInput, { color: theme.textPrimary, borderColor: theme.border }]}
+              />
+            </>
+          ) : (
             <TextInput
-              placeholder="https://…"
+              placeholder={BODY_PLACEHOLDER[kind]}
               placeholderTextColor={theme.textSecondary}
-              value={url}
-              onChangeText={setUrl}
-              autoCapitalize="none"
-              keyboardType="url"
-              style={[styles.input, styles.urlInput, { color: theme.textPrimary, borderColor: theme.border }]}
+              value={bodyText}
+              onChangeText={setBodyText}
+              multiline
+              style={[styles.input, styles.multilineInput, { color: theme.textPrimary, borderColor: theme.border }]}
             />
-          ) : null}
-          <View style={styles.button}>
-            <NBPrimaryButton title={saving ? 'Posting…' : 'Post'} onPress={onPost} disabled={saving || draft.trim().length === 0} />
-          </View>
+          )}
         </NBCard>
-      )}
-      {error ? (
-        <ThemedText type="small" themeColor="destructive">
-          {error}
-        </ThemedText>
-      ) : null}
+
+        {error ? (
+          <ThemedText type="small" themeColor="destructive">
+            {error}
+          </ThemedText>
+        ) : null}
+      </ScrollView>
     </ThemedView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: Spacing.four, justifyContent: 'center', gap: Spacing.two },
-  quote: { fontSize: 24, lineHeight: 32 },
-  body: { marginTop: 8 },
-  kindRow: { flexDirection: 'row', gap: Spacing.two, marginTop: Spacing.two },
-  kindChip: { paddingVertical: 8, paddingHorizontal: 14, borderWidth: 1, borderRadius: 999 },
-  input: { borderWidth: 1, borderRadius: 12, padding: 12, marginTop: 12, minHeight: 80, textAlignVertical: 'top', fontSize: 15 },
-  urlInput: { minHeight: 0, textAlignVertical: 'center' },
-  button: { marginTop: 12 },
+  container: { padding: 20, gap: 16 },
+  segmented: { flexDirection: 'row', borderRadius: 12, padding: 4 },
+  segmentWrap: { flex: 1 },
+  segment: { paddingVertical: 8, alignItems: 'center', borderRadius: 9 },
+  sectionLabel: { marginBottom: 8 },
+  input: { borderRadius: 12, borderWidth: 1, paddingHorizontal: 14, paddingVertical: 12, fontSize: 16 },
+  multilineInput: { minHeight: 90, textAlignVertical: 'top', marginTop: 10 },
 });
