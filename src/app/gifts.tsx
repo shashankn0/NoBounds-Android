@@ -5,6 +5,7 @@ import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { FormHeader } from '@/components/form-header';
+import { HeaderIconButton } from '@/components/header-icon-button';
 import { MetadataChip } from '@/components/metadata-chip';
 import { NBCard } from '@/components/nb-card';
 import { ThemedText } from '@/components/themed-text';
@@ -95,15 +96,9 @@ export default function GiftsScreen() {
         title="Gifts & acts of service"
         titleAlign="left"
         rightSlot={
-          <View style={[styles.headerPill, { backgroundColor: theme.surface }]}>
-            <Pressable
-              onPress={() => router.push({ pathname: '/gift-idea-form', params: { initialKind: selectedKind } })}
-              style={styles.headerPillHalf}
-              hitSlop={6}>
-              <Ionicons name="add" size={20} color={theme.accent} />
-            </Pressable>
-            <View style={[styles.headerPillDivider, { backgroundColor: theme.border }]} />
-            <Pressable onPress={() => router.back()} style={styles.headerPillHalf} hitSlop={6}>
+          <View style={styles.headerActions}>
+            <HeaderIconButton icon="add" onPress={() => router.push({ pathname: '/gift-idea-form', params: { initialKind: selectedKind } })} />
+            <Pressable onPress={() => router.back()} style={[styles.donePill, { backgroundColor: theme.surface }]}>
               <ThemedText type="smallBold" themeColor="accent">
                 Done
               </ThemedText>
@@ -244,9 +239,8 @@ const styles = StyleSheet.create({
   recipientChip: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999 },
   recipientChipText: { fontSize: 12, lineHeight: 16, fontWeight: '500' },
   section: { gap: 10 },
-  headerPill: { flexDirection: 'row', alignItems: 'center', borderRadius: 999, overflow: 'hidden' },
-  headerPillHalf: { paddingVertical: 8, paddingHorizontal: 14, alignItems: 'center', justifyContent: 'center' },
-  headerPillDivider: { width: StyleSheet.hairlineWidth, alignSelf: 'stretch', marginVertical: 8 },
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  donePill: { paddingVertical: 8, paddingHorizontal: 14, borderRadius: 999 },
   ideaCard: { gap: 8 },
   ideaTitleRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 },
   ideaTitle: { flex: 1, fontWeight: '600' },

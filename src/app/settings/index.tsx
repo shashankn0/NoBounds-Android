@@ -2,6 +2,7 @@ import { router, useFocusEffect } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 import { useCallback, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { NBCard } from '@/components/nb-card';
 import { NBPrimaryButton, NBSecondaryButton } from '@/components/nb-button';
@@ -25,6 +26,7 @@ const REUNION_PRESETS = [
 
 export default function SettingsScreen() {
   const theme = useTheme();
+  const insets = useSafeAreaInsets();
   const { couple, signOut } = useSession();
   const [reunionDate, setReunionDate] = useState<string | null>(null);
 
@@ -62,7 +64,7 @@ export default function SettingsScreen() {
 
   return (
     <ThemedView style={{ flex: 1 }}>
-      <ScrollView contentContainerStyle={styles.container}>
+      <ScrollView contentContainerStyle={[styles.container, { paddingBottom: insets.bottom + 20 }]}>
       <NBCard>
         <ThemedText type="small" themeColor="textSecondary">
           Partner connection

@@ -16,6 +16,12 @@ export type PaletteColors = {
   tabBarBackground: string;
   tabBarItemSelected: string;
   tabBarItemUnselected: string;
+  bubbleOutgoing: string;
+  bubbleOutgoingText: string;
+  bubbleIncoming: string;
+  bubbleIncomingText: string;
+  bubbleSystem: string;
+  bubbleSystemText: string;
 };
 
 export type Palette = {
@@ -47,6 +53,12 @@ export const Palettes: Record<PaletteId, Palette> = {
       tabBarBackground: '#FAF5F1',
       tabBarItemSelected: '#A16654',
       tabBarItemUnselected: '#7C6D66',
+      bubbleOutgoing: '#A16654',
+      bubbleOutgoingText: '#FFFFFF',
+      bubbleIncoming: '#E8E0DA',
+      bubbleIncomingText: '#2C2421',
+      bubbleSystem: '#EBE2DC',
+      bubbleSystemText: '#6B5C55',
     },
     dark: {
       background: '#1A1614',
@@ -64,6 +76,12 @@ export const Palettes: Record<PaletteId, Palette> = {
       tabBarBackground: '#221E1C',
       tabBarItemSelected: '#D9907A',
       tabBarItemUnselected: '#8A8078',
+      bubbleOutgoing: '#C77F68',
+      bubbleOutgoingText: '#FFFFFF',
+      bubbleIncoming: '#3D3530',
+      bubbleIncomingText: '#F2EEEB',
+      bubbleSystem: '#322C28',
+      bubbleSystemText: '#A89F98',
     },
   },
   ocean_calm: {
@@ -85,6 +103,12 @@ export const Palettes: Record<PaletteId, Palette> = {
       tabBarBackground: '#F4F9FC',
       tabBarItemSelected: '#1B8097',
       tabBarItemUnselected: '#607582',
+      bubbleOutgoing: '#1B8097',
+      bubbleOutgoingText: '#FFFFFF',
+      bubbleIncoming: '#D4E2ED',
+      bubbleIncomingText: '#152E3C',
+      bubbleSystem: '#E0E9F1',
+      bubbleSystemText: '#526A7A',
     },
     dark: {
       background: '#0F1A22',
@@ -102,6 +126,12 @@ export const Palettes: Record<PaletteId, Palette> = {
       tabBarBackground: '#15222C',
       tabBarItemSelected: '#4DB8D0',
       tabBarItemUnselected: '#6E8594',
+      bubbleOutgoing: '#1F8FA8',
+      bubbleOutgoingText: '#FFFFFF',
+      bubbleIncoming: '#2E4252',
+      bubbleIncomingText: '#E8F0F5',
+      bubbleSystem: '#243544',
+      bubbleSystemText: '#94A8B8',
     },
   },
   evergreen: {
@@ -123,6 +153,12 @@ export const Palettes: Record<PaletteId, Palette> = {
       tabBarBackground: '#F6F9F4',
       tabBarItemSelected: '#2F5A3C',
       tabBarItemUnselected: '#68756C',
+      bubbleOutgoing: '#3F6E4E',
+      bubbleOutgoingText: '#FFFFFF',
+      bubbleIncoming: '#D8E0D6',
+      bubbleIncomingText: '#1C2820',
+      bubbleSystem: '#E4EAE2',
+      bubbleSystemText: '#546458',
     },
     dark: {
       background: '#141A16',
@@ -140,6 +176,12 @@ export const Palettes: Record<PaletteId, Palette> = {
       tabBarBackground: '#1C241E',
       tabBarItemSelected: '#6AA078',
       tabBarItemUnselected: '#78887C',
+      bubbleOutgoing: '#3F6E4E',
+      bubbleOutgoingText: '#FFFFFF',
+      bubbleIncoming: '#38483C',
+      bubbleIncomingText: '#ECF0ED',
+      bubbleSystem: '#2C3830',
+      bubbleSystemText: '#98A89C',
     },
   },
   lavender_dusk: {
@@ -161,6 +203,12 @@ export const Palettes: Record<PaletteId, Palette> = {
       tabBarBackground: '#F8F5FB',
       tabBarItemSelected: '#5C4282',
       tabBarItemUnselected: '#766D82',
+      bubbleOutgoing: '#7A5C9E',
+      bubbleOutgoingText: '#FFFFFF',
+      bubbleIncoming: '#E0D8EA',
+      bubbleIncomingText: '#262032',
+      bubbleSystem: '#E9E4F0',
+      bubbleSystemText: '#645C72',
     },
     dark: {
       background: '#16141C',
@@ -178,6 +226,12 @@ export const Palettes: Record<PaletteId, Palette> = {
       tabBarBackground: '#1E1C26',
       tabBarItemSelected: '#A888C8',
       tabBarItemUnselected: '#887E96',
+      bubbleOutgoing: '#7A5C9E',
+      bubbleOutgoingText: '#FFFFFF',
+      bubbleIncoming: '#3C3848',
+      bubbleIncomingText: '#F0ECF5',
+      bubbleSystem: '#302C3A',
+      bubbleSystemText: '#A8A0B4',
     },
   },
   paper_minimal: {
@@ -199,6 +253,12 @@ export const Palettes: Record<PaletteId, Palette> = {
       tabBarBackground: '#F6F6F2',
       tabBarItemSelected: '#1A1A18',
       tabBarItemUnselected: '#71716E',
+      bubbleOutgoing: '#3A3A36',
+      bubbleOutgoingText: '#FFFFFF',
+      bubbleIncoming: '#E6E6E0',
+      bubbleIncomingText: '#1A1A18',
+      bubbleSystem: '#F0F0EC',
+      bubbleSystemText: '#5C5C58',
     },
     dark: {
       background: '#121210',
@@ -216,6 +276,12 @@ export const Palettes: Record<PaletteId, Palette> = {
       tabBarBackground: '#1A1A18',
       tabBarItemSelected: '#F2F2F0',
       tabBarItemUnselected: '#7A7A76',
+      bubbleOutgoing: '#5A5A56',
+      bubbleOutgoingText: '#FFFFFF',
+      bubbleIncoming: '#383836',
+      bubbleIncomingText: '#F2F2F0',
+      bubbleSystem: '#2A2A28',
+      bubbleSystemText: '#9A9A96',
     },
   },
 };

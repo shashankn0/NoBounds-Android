@@ -1,4 +1,4 @@
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Switch, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -9,7 +9,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { useSession } from '@/contexts/session-context';
 import { useTheme } from '@/hooks/use-theme';
-import { createHabit, type HabitCompletionPolicy, type HabitOwnerScope } from '@/lib/habits';
+import { createHabit, updateHabit, type HabitCompletionPolicy, type HabitOwnerScope } from '@/lib/habits';
 import { createImportantDate } from '@/lib/important-dates';
 
 type Page = 'habit' | 'important_date';
@@ -29,12 +29,19 @@ export default function HabitFormScreen() {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const { couple } = useSession();
+  const { habitId, initialTitle, initialScope, initialPolicy } = useLocalSearchParams<{
+    habitId?: string;
+    initialTitle?: string;
+    initialScope?: HabitOwnerScope;
+    initialPolicy?: HabitCompletionPolicy;
+  }>();
+  const isEditing = !!habitId;
   const [page, setPage] = useState<Page>('habit');
-  const [title, setTitle] = useState('');
+  const [title, setTitle] = useState(initialTitle ?? '');
   const [description, setDescription] = useState('');
   const [repeatsYearly, setRepeatsYearly] = useState(false);
-  const [scope, setScope] = useState<HabitOwnerScope>('mine');
-  const [policy, setPolicy] = useState<HabitCompletionPolicy>('either');
+  const [scope, setScope] = useState<HabitOwnerScope>(initialScope ?? 'mine');
+  const [policy, setPolicy] = useState<HabitCompletionPolicy>(initialPolicy ?? 'either');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -44,7 +51,9 @@ export default function HabitFormScreen() {
     setSaving(true);
     setError(null);
     try {
-      if (page === 'important_date') {
+      if (isEditing) {
+        await updateHabit(habitId, title.trim(), couple ? scope : 'mine', policy);
+      } else if (page === 'important_date') {
         // real important_dates.event_date is a plain date column, not a picker in this form yet —
         // defaults to today, matching the read-only "When" pill shown below
         const eventDate = new Date().toISOString().slice(0, 10);
@@ -63,7 +72,7 @@ export default function HabitFormScreen() {
   return (
     <ThemedView style={{ flex: 1 }}>
       <FormHeader
-        title={page === 'habit' ? 'New habit' : 'New important date'}
+        title={isEditing ? 'Edit habit' : page === 'habit' ? 'New habit' : 'New important date'}
         leftLabel="Cancel"
         onLeftPress={() => router.back()}
         rightLabel={saving ? 'Saving…' : 'Save'}
@@ -71,17 +80,19 @@ export default function HabitFormScreen() {
         rightDisabled={title.trim().length === 0 || saving}
       />
       <ScrollView contentContainerStyle={[styles.container, { paddingBottom: insets.bottom + 20 }]}>
-        <View style={[styles.segmented, { backgroundColor: theme.backgroundSecondary }]}>
-          {(['habit', 'important_date'] as Page[]).map((id) => (
-            <Pressable key={id} onPress={() => setPage(id)} style={styles.segmentWrap}>
-              <View style={[styles.segment, page === id && { backgroundColor: theme.surface }]}>
-                <ThemedText type="smallBold">{id === 'habit' ? 'Habit' : 'Important date'}</ThemedText>
-              </View>
-            </Pressable>
-          ))}
-        </View>
+        {isEditing ? null : (
+          <View style={[styles.segmented, { backgroundColor: theme.backgroundSecondary }]}>
+            {(['habit', 'important_date'] as Page[]).map((id) => (
+              <Pressable key={id} onPress={() => setPage(id)} style={styles.segmentWrap}>
+                <View style={[styles.segment, page === id && { backgroundColor: theme.surface }]}>
+                  <ThemedText type="smallBold">{id === 'habit' ? 'Habit' : 'Important date'}</ThemedText>
+                </View>
+              </Pressable>
+            ))}
+          </View>
+        )}
 
-        {page === 'habit' ? (
+        {isEditing || page === 'habit' ? (
           <>
             <NBCard>
               <ThemedText type="small" themeColor="textSecondary">

@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router, useFocusEffect } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, TextInput, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -502,6 +502,17 @@ export default function PlayScreen() {
   const [visibleMessages, setVisibleMessages] = useState<Record<string, string>>({});
   const [messageText, setMessageText] = useState('');
   const [sending, setSending] = useState(false);
+  // locked while a draw-and-guess stroke is in progress — android's ScrollView can otherwise
+  // steal the touch mid-stroke and cut the line short. this must be imperative (setNativeProps),
+  // not a re-rendered `scrollEnabled` prop — toggling it via state during an active touch causes
+  // the native ScrollView to reconfigure itself, which was itself terminating the gesture early
+  const gameScrollRef = useRef<ScrollView>(null);
+  const onDrawStart = useCallback(() => {
+    gameScrollRef.current?.setNativeProps({ scrollEnabled: false });
+  }, []);
+  const onDrawEnd = useCallback(() => {
+    gameScrollRef.current?.setNativeProps({ scrollEnabled: true });
+  }, []);
 
   const loadPetArea = useCallback(() => {
     if (!couple) return;
@@ -557,13 +568,15 @@ export default function PlayScreen() {
           leftIcon="chevron-back"
           onLeftPress={() => setActiveGame(null)}
         />
-        <View style={[styles.container, { paddingBottom: insets.bottom + BottomTabInset }]}>
+        <ScrollView
+          ref={gameScrollRef}
+          contentContainerStyle={[styles.container, { paddingBottom: insets.bottom + BottomTabInset }]}>
           {activeGame === 'tic-tac-toe' ? <TicTacToe /> : null}
           {activeGame === 'spanish-flashcards' ? <Flashcards language="spanish" title="Spanish Flashcards" /> : null}
           {activeGame === 'japanese-flashcards' ? <Flashcards language="japanese" title="Japanese Flashcards" /> : null}
           {activeGame === 'draw-and-guess' ? (
             couple ? (
-              <DrawAndGuess />
+              <DrawAndGuess onDrawStart={onDrawStart} onDrawEnd={onDrawEnd} />
             ) : (
               <NBCard style={styles.gameCard}>
                 <ThemedText type="default" themeColor="textSecondary" style={styles.centeredText}>
@@ -572,7 +585,7 @@ export default function PlayScreen() {
               </NBCard>
             )
           ) : null}
-        </View>
+        </ScrollView>
       </ThemedView>
     );
   }

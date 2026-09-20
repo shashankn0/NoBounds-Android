@@ -39,7 +39,8 @@ const CATEGORY_LABEL: Record<DateIdeaCategory, string> = {
   games: 'Games',
 };
 
-const COST_LABEL: Record<CostLevel, string> = { free: 'Free', low: 'Low cost', medium: 'Medium cost', high: 'High cost' };
+// matches ios's DateIdeaCostLevel.displayLabel exactly — shared with gift ideas
+const COST_LABEL: Record<CostLevel, string> = { free: 'Free', low: '$', medium: '$$', high: '$$$' };
 const SETTING_LABEL: Record<DateIdeaSetting, string> = { indoor: 'Indoor', outdoor: 'Outdoor', either: 'Anywhere' };
 const TIME_LABEL: Record<TimeOfDay, string> = { morning: 'Morning', afternoon: 'Afternoon', evening: 'Evening', any: 'Any time' };
 

@@ -7,6 +7,7 @@ import { AnimatedSplashOverlay } from '@/components/animated-icon';
 import { Palettes, type PaletteId } from '@/constants/palettes';
 import { SessionProvider, useSession } from '@/contexts/session-context';
 import { PaletteProvider, usePalette } from '@/contexts/palette-context';
+import { registerForPush, watchNotificationTaps, watchPushTokenRefresh } from '@/lib/push';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -55,6 +56,19 @@ function RootNavigator() {
     }
   }, [isLoading]);
 
+  // android push: register the FCM token once signed in and route taps on system notifications
+  const userId = session?.user.id ?? null;
+  useEffect(() => {
+    if (!userId || isLoading) return;
+    registerForPush(userId);
+    const stopRefresh = watchPushTokenRefresh(userId);
+    const stopTaps = watchNotificationTaps();
+    return () => {
+      stopRefresh();
+      stopTaps();
+    };
+  }, [userId, isLoading]);
+
   if (isLoading) {
     return null; // splash stays up until session/theme are ready
   }
@@ -71,15 +85,27 @@ function RootNavigator() {
           <Stack.Screen name="(tabs)" />
           <Stack.Screen name="pairing" options={{ presentation: 'modal', headerShown: true, title: 'Pairing' }} />
           <Stack.Screen name="profile" options={{ headerShown: true, title: 'Profile' }} />
-          <Stack.Screen name="notifications" options={{ headerShown: true, title: 'Notifications' }} />
+          <Stack.Screen name="notifications" options={{ headerShown: false }} />
           <Stack.Screen name="settings/index" options={{ headerShown: true, title: 'Settings' }} />
           <Stack.Screen name="settings/appearance" options={{ headerShown: true, title: 'Appearance' }} />
           <Stack.Screen name="account" options={{ headerShown: true, title: 'Account' }} />
           <Stack.Screen name="about" options={{ headerShown: true, title: 'From the creators' }} />
           <Stack.Screen name="feedback-support" options={{ headerShown: true, title: 'Feedback & support' }} />
           <Stack.Screen name="request-data" options={{ presentation: 'modal' }} />
-          <Stack.Screen name="pet" options={{ headerShown: true, title: 'Pet' }} />
-          <Stack.Screen name="date-ideas" options={{ headerShown: false }} />
+          <Stack.Screen name="pet" options={{ headerShown: false }} />
+          <Stack.Screen name="habit-detail" options={{ headerShown: false }} />
+          <Stack.Screen name="send-prompt" options={{ presentation: 'modal' }} />
+          <Stack.Screen
+            name="date-ideas"
+            options={{
+              headerShown: false,
+              presentation: 'formSheet',
+              sheetAllowedDetents: [1],
+              sheetGrabberVisible: true,
+              sheetInitialDetentIndex: 0,
+              sheetExpandsWhenScrolledToEdge: true,
+            }}
+          />
           <Stack.Screen name="date-idea-form" options={{ presentation: 'modal' }} />
           <Stack.Screen name="gifts" options={{ headerShown: false }} />
           <Stack.Screen name="gift-idea-form" options={{ presentation: 'modal' }} />

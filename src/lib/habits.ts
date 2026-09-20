@@ -117,6 +117,27 @@ export async function toggleHabitToday(habitId: string, completed: boolean): Pro
   return setHabitCompletion(habitId, todayKey(), completed);
 }
 
+// edits a standard (user-created) habit's title/scope/policy — system habits (weeks_bound,
+// bound_streak) are never editable, matching ios's HabitDetailView.canManage
+export async function updateHabit(
+  habitId: string,
+  title: string,
+  ownerScope: HabitOwnerScope,
+  completionPolicy: HabitCompletionPolicy
+): Promise<void> {
+  const { error } = await supabase
+    .from('habits')
+    .update({ title, owner_scope: ownerScope, completion_policy: completionPolicy })
+    .eq('id', habitId);
+  if (error) throw error;
+}
+
+// soft-deletes a habit — past completions are kept, matching ios's confirmation copy exactly
+export async function archiveHabit(habitId: string): Promise<void> {
+  const { error } = await supabase.from('habits').update({ archived_at: new Date().toISOString() }).eq('id', habitId);
+  if (error) throw error;
+}
+
 export function todayKey(date: Date = new Date()): string {
   return dateKey(date);
 }

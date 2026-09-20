@@ -14,7 +14,7 @@ type IconName = keyof typeof Ionicons.glyphMap;
 // outline/filled swap), so there's a single icon per tab here.
 const TABS: { name: string; href: Href; label: string; icon: IconName }[] = [
   { name: 'home', href: '/', label: 'Home', icon: 'home' },
-  { name: 'prompt', href: '/prompt', label: 'Prompt', icon: 'chatbubbles' },
+  { name: 'prompt', href: '/prompt', label: 'Chat', icon: 'chatbubbles' },
   { name: 'photos', href: '/photos', label: 'Bound', icon: 'camera' },
   { name: 'play', href: '/play', label: 'Play', icon: 'game-controller' },
   { name: 'timeline', href: '/timeline', label: 'Timeline', icon: 'time' },

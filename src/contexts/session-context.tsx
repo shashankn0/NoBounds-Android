@@ -2,6 +2,7 @@ import type { Session } from '@supabase/supabase-js';
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 
 import { loadAvatarSource, saveAvatarSource, type AvatarSource } from '@/lib/avatar-preference';
+import { unregisterPush } from '@/lib/push';
 import { getSignedUrl } from '@/lib/storage';
 import { supabase } from '@/lib/supabase';
 
@@ -186,6 +187,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }
 
   async function signOut() {
+    if (session) await unregisterPush(session.user.id);
     await supabase.auth.signOut();
   }
 

@@ -5,6 +5,7 @@ import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { FormHeader } from '@/components/form-header';
+import { HeaderIconButton } from '@/components/header-icon-button';
 import { MetadataChip } from '@/components/metadata-chip';
 import { NBCard } from '@/components/nb-card';
 import { ThemedText } from '@/components/themed-text';
@@ -175,22 +176,11 @@ export default function DateIdeasScreen() {
     <ThemedView style={{ flex: 1 }}>
       <FormHeader
         title="Date ideas"
-        titleAlign="left"
         rightSlot={
-          <View style={[styles.headerPill, { backgroundColor: theme.surface }]}>
-            <Pressable
-              onPress={() => router.push({ pathname: '/date-idea-form', params: { initialMode: selectedMode } })}
-              style={styles.headerPillHalf}
-              hitSlop={6}>
-              <Ionicons name="add" size={20} color={theme.accent} />
-            </Pressable>
-            <View style={[styles.headerPillDivider, { backgroundColor: theme.border }]} />
-            <Pressable onPress={() => router.back()} style={styles.headerPillHalf} hitSlop={6}>
-              <ThemedText type="smallBold" themeColor="accent">
-                Done
-              </ThemedText>
-            </Pressable>
-          </View>
+          <HeaderIconButton
+            icon="add"
+            onPress={() => router.push({ pathname: '/date-idea-form', params: { initialMode: selectedMode } })}
+          />
         }
       />
       <ScrollView contentContainerStyle={[styles.container, { paddingBottom: insets.bottom + 20 }]}>
@@ -345,7 +335,4 @@ const styles = StyleSheet.create({
   ideaTitleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
   ideaTitle: { flex: 1, fontWeight: '600' },
   metadataRow: { flexDirection: 'row', gap: 6 },
-  headerPill: { flexDirection: 'row', alignItems: 'center', borderRadius: 999, overflow: 'hidden' },
-  headerPillHalf: { paddingVertical: 8, paddingHorizontal: 14, alignItems: 'center', justifyContent: 'center' },
-  headerPillDivider: { width: StyleSheet.hairlineWidth, alignSelf: 'stretch', marginVertical: 8 },
 });

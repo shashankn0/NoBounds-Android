@@ -1,4 +1,5 @@
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -16,6 +17,7 @@ const MODES: { id: 'light' | 'dark' | 'system'; label: string }[] = [
 
 export default function AppearanceScreen() {
   const theme = useTheme();
+  const insets = useSafeAreaInsets();
   const { session } = useSession();
   const { paletteId, setPaletteId, appearanceMode, setAppearanceMode, isDark } = usePalette();
 
@@ -41,7 +43,7 @@ export default function AppearanceScreen() {
 
   return (
     <ThemedView style={{ flex: 1 }}>
-      <ScrollView contentContainerStyle={styles.container}>
+      <ScrollView contentContainerStyle={[styles.container, { paddingBottom: insets.bottom + 20 }]}>
         <View style={[styles.segmented, { backgroundColor: theme.backgroundSecondary }]}>
           {MODES.map((mode) => (
             <Pressable key={mode.id} onPress={() => onSelectMode(mode.id)} style={styles.segmentWrap}>

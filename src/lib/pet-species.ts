@@ -104,3 +104,9 @@ export function playAreaScaleFor(key: string): number {
   if (key === 'rat_1' || key === 'rat_2' || key === 'bird_1' || key === 'bird_2') return 2.6;
   return 2.2;
 }
+
+// matches petprofilesheet.swift's spriteScale — the sprite size on the full pet detail screen
+export function profileScaleFor(key: string): number {
+  if (key === 'rat_1' || key === 'rat_2' || key === 'bird_1' || key === 'bird_2') return 2.8;
+  return 2.2;
+}

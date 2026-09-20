@@ -138,7 +138,7 @@ export default function PhotoDetailScreen() {
           {loading ? 'Loading…' : 'Photo not found.'}
         </ThemedText>
       ) : (
-        <ScrollView contentContainerStyle={styles.body}>
+        <ScrollView contentContainerStyle={[styles.body, { paddingBottom: insets.bottom + 20 }]}>
           {imageUrl ? <Image source={{ uri: imageUrl }} style={styles.image} /> : <View style={styles.image} />}
 
           {isOwn ? (

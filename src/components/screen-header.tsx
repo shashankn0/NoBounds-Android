@@ -4,6 +4,7 @@ import { useCallback, useState } from 'react';
 import { Image, Pressable, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { ReunionPopover } from '@/components/reunion-popover';
 import { ThemedText } from '@/components/themed-text';
 import { useSession } from '@/contexts/session-context';
 import { useTheme } from '@/hooks/use-theme';
@@ -24,6 +25,7 @@ export function ScreenHeader({ showPairing = false }: ScreenHeaderProps) {
   const insets = useSafeAreaInsets();
   const { couple, featuredAvatarUrl } = useSession();
   const [hasUnread, setHasUnread] = useState(false);
+  const [showReunionPopover, setShowReunionPopover] = useState(false);
 
   // refetched on every tab focus, same as re-checking on each screen appearance in ios
   useFocusEffect(
@@ -43,12 +45,20 @@ export function ScreenHeader({ showPairing = false }: ScreenHeaderProps) {
       </Pressable>
 
       {showPairing && couple ? (
-        <Pressable onPress={() => router.push('/pairing')} style={[styles.centerLabel, styles.pairingRow]} hitSlop={8}>
-          <ThemedText type="smallBold" numberOfLines={1}>
-            Paired with: {couple.partnerName?.trim() || 'partner'}
-          </ThemedText>
-          <Ionicons name="chevron-down" size={14} color={theme.textSecondary} style={styles.chevron} />
-        </Pressable>
+        <>
+          <Pressable onPress={() => setShowReunionPopover(true)} style={[styles.centerLabel, styles.pairingRow]} hitSlop={8}>
+            <ThemedText type="smallBold" numberOfLines={1}>
+              Paired with: {couple.partnerName?.trim() || 'partner'}
+            </ThemedText>
+            <Ionicons name="chevron-down" size={14} color={theme.textSecondary} style={styles.chevron} />
+          </Pressable>
+          <ReunionPopover
+            visible={showReunionPopover}
+            onClose={() => setShowReunionPopover(false)}
+            coupleId={couple.id}
+            partnerName={couple.partnerName?.trim() || 'partner'}
+          />
+        </>
       ) : (
         <View style={styles.centerLabel} />
       )}

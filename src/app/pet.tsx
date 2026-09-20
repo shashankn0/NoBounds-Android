@@ -1,11 +1,12 @@
+import { Ionicons } from '@expo/vector-icons';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { FormHeader } from '@/components/form-header';
 import { NBCard } from '@/components/nb-card';
-import { NBPrimaryButton, NBSecondaryButton } from '@/components/nb-button';
+import { NBPrimaryButton } from '@/components/nb-button';
 import { PetSprite } from '@/components/pet-sprite';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -13,9 +14,15 @@ import { Spacing } from '@/constants/theme';
 import { useSession } from '@/contexts/session-context';
 import { useTheme } from '@/hooks/use-theme';
 import type { UserPet } from '@/lib/database-types';
-import { isPetSpeciesKey, PET_SPECIES, PET_SPECIES_OPTIONS, previewScaleFor, type PetSpeciesKey } from '@/lib/pet-species';
+import { isPetSpeciesKey, PET_SPECIES, PET_SPECIES_OPTIONS, previewScaleFor, profileScaleFor, type PetSpeciesKey } from '@/lib/pet-species';
 import { fetchPets, petMood, recordPetCare } from '@/lib/pets';
 import { errorMessage, supabase } from '@/lib/supabase';
+
+// mirrors mockpetrepository.swift's bio normalization: trimmed, empty string becomes null
+function normalizedBio(bio: string): string | null {
+  const trimmed = bio.trim();
+  return trimmed.length === 0 ? null : trimmed;
+}
 
 export default function PetScreen() {
   const theme = useTheme();
@@ -36,7 +43,9 @@ export default function PetScreen() {
   const [editName, setEditName] = useState('');
   const [editBio, setEditBio] = useState('');
   const [editSaving, setEditSaving] = useState(false);
-  const [editSaved, setEditSaved] = useState(false);
+
+  // which care action is in flight, if any — either partner can feed/play with either pet
+  const [caring, setCaring] = useState<'feed' | 'play' | null>(null);
 
   const load = useCallback(async () => {
     if (!couple) {
@@ -70,11 +79,14 @@ export default function PetScreen() {
       if (viewedPet) {
         setEditName(viewedPet.name);
         setEditBio(viewedPet.bio ?? '');
-        setEditSaved(false);
       }
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [viewedPet?.id])
   );
+
+  const hasEdits = !!viewedPet && (editName !== viewedPet.name || normalizedBio(editBio) !== (viewedPet.bio ?? null));
+  const canSaveEdits = editName.trim().length > 0;
+  const hasPendingEdits = isOwn && hasEdits;
 
   async function onAdopt() {
     if (!couple || !session || name.trim().length === 0) return;
@@ -94,27 +106,29 @@ export default function PetScreen() {
   }
 
   async function onCare(action: 'feed' | 'play') {
-    if (!myPet) return;
+    if (!viewedPet || caring) return;
+    setCaring(action);
     try {
-      await recordPetCare(myPet.id, action);
+      await recordPetCare(viewedPet.id, action);
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not update pet');
+    } finally {
+      setCaring(null);
     }
   }
 
   async function onSaveAbout() {
-    if (!viewedPet || editName.trim().length === 0) return;
+    if (!viewedPet || !canSaveEdits) return;
     setEditSaving(true);
-    setEditSaved(false);
     try {
       const { error: updateError } = await supabase
         .from('user_pets')
-        .update({ name: editName.trim(), bio: editBio.trim() || null, updated_at: new Date().toISOString() })
+        .update({ name: editName.trim(), bio: normalizedBio(editBio), updated_at: new Date().toISOString() })
         .eq('id', viewedPet.id);
       if (updateError) throw updateError;
-      setEditSaved(true);
       await load();
+      router.back();
     } catch (err) {
       setError(errorMessage(err, 'Could not save'));
     } finally {
@@ -209,77 +223,74 @@ export default function PetScreen() {
 
   return (
     <ThemedView style={styles.container}>
-      <FormHeader title={viewedPet.name} leftLabel="Close" onLeftPress={() => router.back()} />
+      <FormHeader
+        title={viewedPet.name}
+        rightLabel={hasPendingEdits ? (editSaving ? 'Saving…' : 'Save') : 'Done'}
+        rightDisabled={hasPendingEdits ? editSaving || !canSaveEdits : false}
+        onRightPress={hasPendingEdits ? onSaveAbout : () => router.back()}
+      />
       <ScrollView contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 20 }]}>
         <View style={styles.centered}>
           {speciesInfo ? (
-            <PetSprite speciesKey={viewedPet.species_key as PetSpeciesKey} animation="idle" scale={previewScaleFor(viewedPet.species_key) * 2.2} />
+            <PetSprite speciesKey={viewedPet.species_key as PetSpeciesKey} animation="idle" scale={profileScaleFor(viewedPet.species_key)} />
           ) : null}
-          <ThemedText type="title">{viewedPet.name}</ThemedText>
+          <ThemedText type="smallBold">{speciesInfo?.label ?? viewedPet.species_key}</ThemedText>
           <ThemedText type="small" themeColor="textSecondary">
-            {speciesInfo?.label ?? viewedPet.species_key} · Adopted{' '}
-            {new Date(viewedPet.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+            Adopted {new Date(viewedPet.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
           </ThemedText>
         </View>
 
         <NBCard>
-          <ThemedText type="small" themeColor="textSecondary" style={styles.sectionLabel}>
+          <ThemedText type="subtitle" style={styles.sectionLabel}>
             Care
           </ThemedText>
-          <MeterRow label="Fullness" value={mood.fullness} theme={theme} />
-          <MeterRow label="Happiness" value={mood.happiness} theme={theme} />
-          {isOwn ? (
-            <View style={styles.careButtons}>
-              <View style={styles.careButton}>
-                <NBSecondaryButton title="Feed" onPress={() => onCare('feed')} />
-              </View>
-              <View style={styles.careButton}>
-                <NBSecondaryButton title="Play" onPress={() => onCare('play')} />
-              </View>
-            </View>
-          ) : (
+          <MeterRow icon="restaurant" label="Fullness" value={mood.fullness} theme={theme} />
+          <MeterRow icon="heart" label="Happiness" value={mood.happiness} theme={theme} />
+          <View style={styles.careButtons}>
+            <CareButton icon="restaurant" title="Feed" busy={caring === 'feed'} disabled={!!caring} onPress={() => onCare('feed')} theme={theme} />
+            <CareButton icon="walk" title="Play" busy={caring === 'play'} disabled={!!caring} onPress={() => onCare('play')} theme={theme} />
+          </View>
+          {!isOwn ? (
             <ThemedText type="small" themeColor="textSecondary" style={styles.body}>
               Caring for {viewedPet.name} lets your partner know you stopped by.
             </ThemedText>
-          )}
+          ) : null}
         </NBCard>
 
         <NBCard>
-          <ThemedText type="small" themeColor="textSecondary" style={styles.sectionLabel}>
+          <ThemedText type="subtitle" style={styles.sectionLabel}>
             About
           </ThemedText>
           {isOwn ? (
-            <>
-              <TextInput
-                value={editName}
-                onChangeText={setEditName}
-                placeholder="Name"
-                placeholderTextColor={theme.textSecondary}
-                style={[styles.input, { color: theme.textPrimary, borderColor: theme.border }]}
-              />
-              <TextInput
-                value={editBio}
-                onChangeText={(t) => setEditBio(t.slice(0, 80))}
-                placeholder="Bio (80 characters max)"
-                placeholderTextColor={theme.textSecondary}
-                style={[styles.input, { color: theme.textPrimary, borderColor: theme.border }]}
-              />
-              <View style={styles.body}>
-                <NBPrimaryButton
-                  title={editSaving ? 'Saving…' : 'Save'}
-                  onPress={onSaveAbout}
-                  disabled={editSaving || editName.trim().length === 0}
+            <View style={styles.aboutFields}>
+              <View>
+                <ThemedText type="small" themeColor="textSecondary" style={styles.fieldLabel}>
+                  Name
+                </ThemedText>
+                <TextInput
+                  value={editName}
+                  onChangeText={setEditName}
+                  placeholder="Name"
+                  placeholderTextColor={theme.textSecondary}
+                  style={[styles.input, { color: theme.textPrimary, borderColor: theme.border }]}
                 />
               </View>
-              {editSaved ? (
-                <ThemedText type="small" themeColor="textSecondary" style={styles.body}>
-                  Saved.
+              <View>
+                <ThemedText type="small" themeColor="textSecondary" style={styles.fieldLabel}>
+                  Bio
                 </ThemedText>
-              ) : null}
-            </>
+                <TextInput
+                  value={editBio}
+                  onChangeText={(t) => setEditBio(t.slice(0, 80))}
+                  placeholder="A short description (80 characters max)"
+                  placeholderTextColor={theme.textSecondary}
+                  style={[styles.input, { color: theme.textPrimary, borderColor: theme.border }]}
+                />
+              </View>
+            </View>
           ) : (
             <ThemedText type="default" themeColor="textSecondary">
-              {viewedPet.bio ?? 'No bio yet.'}
+              {viewedPet.bio ?? `${viewedPet.name} doesn't have a bio yet.`}
             </ThemedText>
           )}
         </NBCard>
@@ -294,19 +305,55 @@ export default function PetScreen() {
   );
 }
 
-function MeterRow({ label, value, theme }: { label: string; value: number; theme: ReturnType<typeof useTheme> }) {
+function MeterRow({
+  icon,
+  label,
+  value,
+  theme,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  value: number;
+  theme: ReturnType<typeof useTheme>;
+}) {
   return (
     <View style={styles.meterRow}>
-      <View style={styles.meterHeader}>
-        <ThemedText type="small">{label}</ThemedText>
-        <ThemedText type="small" themeColor="textSecondary">
-          {Math.round(value * 100)}%
-        </ThemedText>
-      </View>
+      <Ionicons name={icon} size={15} color={theme.accent} style={styles.meterIcon} />
+      <ThemedText type="small" style={styles.meterLabel}>
+        {label}
+      </ThemedText>
       <View style={[styles.meterTrack, { backgroundColor: theme.border }]}>
         <View style={[styles.meterFill, { width: `${Math.max(4, value * 100)}%`, backgroundColor: theme.accent }]} />
       </View>
     </View>
+  );
+}
+
+function CareButton({
+  icon,
+  title,
+  onPress,
+  busy,
+  disabled,
+  theme,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  title: string;
+  onPress: () => void;
+  busy: boolean;
+  disabled: boolean;
+  theme: ReturnType<typeof useTheme>;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={disabled}
+      style={[styles.careButton, { backgroundColor: theme.accent + '24', opacity: disabled && !busy ? 0.5 : 1 }]}>
+      {busy ? <ActivityIndicator size="small" color={theme.accent} /> : <Ionicons name={icon} size={15} color={theme.accent} />}
+      <ThemedText type="smallBold" themeColor="accent">
+        {title}
+      </ThemedText>
+    </Pressable>
   );
 }
 
@@ -326,11 +373,14 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     paddingVertical: Spacing.two,
   },
-  input: { borderRadius: 12, borderWidth: 1, paddingHorizontal: 14, paddingVertical: 12, fontSize: 16, marginTop: 8 },
-  meterRow: { marginBottom: 12, gap: 6 },
-  meterHeader: { flexDirection: 'row', justifyContent: 'space-between' },
-  meterTrack: { height: 8, borderRadius: 4, overflow: 'hidden' },
-  meterFill: { height: '100%', borderRadius: 4 },
+  input: { borderRadius: 12, borderWidth: 1, paddingHorizontal: 14, paddingVertical: 10, fontSize: 16 },
+  aboutFields: { gap: 12 },
+  fieldLabel: { marginBottom: 6, fontWeight: '600' },
+  meterRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 },
+  meterIcon: { width: 18, textAlign: 'center' },
+  meterLabel: { width: 70 },
+  meterTrack: { flex: 1, height: 6, borderRadius: 3, overflow: 'hidden' },
+  meterFill: { height: '100%', borderRadius: 3 },
   careButtons: { flexDirection: 'row', gap: 12, marginTop: 4 },
-  careButton: { flex: 1 },
+  careButton: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: 12 },
 });

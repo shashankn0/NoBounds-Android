@@ -7,6 +7,9 @@ type NBButtonProps = {
   title: string;
   onPress?: (event: GestureResponderEvent) => void;
   disabled?: boolean;
+  // shorter vertical padding, for toolbar-style pairs (e.g. Undo/Clear) where the full-height
+  // button reads too tall next to a compact canvas
+  compact?: boolean;
 };
 
 // mirrors nbprimarybutton.swift: accent fill, 12pt radius, semibold label. use for the main action.
@@ -29,7 +32,7 @@ export function NBPrimaryButton({ title, onPress, disabled }: NBButtonProps) {
 }
 
 // mirrors nbsecondarybutton.swift: surface fill, accent-colored 1.5pt border. use for lesser actions.
-export function NBSecondaryButton({ title, onPress, disabled }: NBButtonProps) {
+export function NBSecondaryButton({ title, onPress, disabled, compact }: NBButtonProps) {
   const theme = useTheme();
 
   return (
@@ -38,6 +41,7 @@ export function NBSecondaryButton({ title, onPress, disabled }: NBButtonProps) {
       onPress={onPress}
       style={({ pressed }) => [
         styles.base,
+        compact && styles.baseCompact,
         {
           backgroundColor: theme.surface,
           borderWidth: 1.5,
@@ -58,5 +62,6 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignItems: 'center',
   },
+  baseCompact: { paddingVertical: 9 },
   label: { fontSize: 16 },
 });

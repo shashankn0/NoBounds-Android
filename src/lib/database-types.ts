@@ -154,7 +154,9 @@ export type TimelineFeedRow = {
   cursor_item_id: string;
 };
 
-// ============ daily prompts ============
+// ============ chat / prompts ============
+// production schema: chat is a flat couple-scoped stream in prompt_messages (the old
+// couple_daily_prompts / prompt_answers / prompt_reactions / prompt_replies tables are gone)
 export type PromptTemplate = {
   id: string;
   body: string;
@@ -163,69 +165,25 @@ export type PromptTemplate = {
   created_at: string;
 };
 
-export type CoupleDailyPrompt = {
-  id: string;
-  couple_id: string;
-  prompt_date: string;
-  template_id: string | null;
-  custom_body: string | null;
-  timezone: string;
-  created_at: string;
-};
-
-export type PromptAnswer = {
-  id: string;
-  couple_daily_prompt_id: string;
-  user_id: string;
-  body: string;
-  photo_storage_path: string | null;
-  submitted_at: string;
-  client_idempotency_key: string | null;
-};
-
-export type PromptReaction = {
-  id: string;
-  prompt_answer_id: string;
-  user_id: string;
-  emoji: string;
-  created_at: string;
-};
-
-export type PromptReply = {
-  id: string;
-  prompt_answer_id: string;
-  parent_reply_id: string | null;
-  user_id: string;
-  body: string;
-  created_at: string;
-};
+export type PromptMessageKind = 'text' | 'prompt' | 'photo_reply';
 
 export type PromptMessage = {
   id: string;
-  couple_daily_prompt_id: string;
+  couple_id: string;
   user_id: string;
   body: string;
+  kind: PromptMessageKind;
+  photo_id: string | null;
   created_at: string;
 };
 
-// view: metadata-only per-answer row (no body) for "waiting on partner" ui
-export type PromptAnswerSlot = {
-  couple_daily_prompt_id: string;
-  user_id: string;
-  submitted_at: string;
-  has_media: boolean;
-};
-
-// view: joined summary used by timeline_feed for the 'prompt' item type
-export type CoupleDailyPromptFeedRow = {
+export type CoupleWeeklyPrompt = {
   id: string;
   couple_id: string;
-  prompt_date: string;
+  week_start: string;
+  template_id: string | null;
   timezone: string;
   created_at: string;
-  body: string;
-  answer_count: number;
-  is_revealed: boolean;
 };
 
 // ============ presence / bound ============
