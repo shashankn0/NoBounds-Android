@@ -115,7 +115,7 @@ export default function CycleSharingSettingsScreen() {
   return (
     <ThemedView style={{ flex: 1 }}>
       <ScrollView contentContainerStyle={[styles.container, { paddingBottom: insets.bottom + 20 }]}>
-        <ThemedText type="default" themeColor="textSecondary">
+        <ThemedText type="small" themeColor="textSecondary" style={styles.subheadline}>
           Choose what your partner can see. You can change these anytime.
         </ThemedText>
 
@@ -188,6 +188,7 @@ function ToggleRow({
 }
 
 const styles = StyleSheet.create({
+  subheadline: { fontSize: 14, lineHeight: 19 }, // ios .subheadline
   container: { padding: 20, gap: 16 },
   toggleRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8 },
   toggleLabel: { flex: 1 },

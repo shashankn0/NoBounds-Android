@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { CameraView, useCameraPermissions, type CameraType, type FlashMode } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
-import { router } from 'expo-router';
+import { router, useIsFocused } from 'expo-router';
 import { useState } from 'react';
 import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, TextInput, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -50,6 +50,8 @@ export default function PhotosScreen() {
   const [sent, setSent] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [cameraRef, setCameraRef] = useState<CameraView | null>(null);
+  // the tab stays mounted after you leave it — only run the camera preview while it's on screen
+  const isFocused = useIsFocused();
 
   async function onCapture() {
     if (!cameraRef || capturing) return;
@@ -114,7 +116,7 @@ export default function PhotosScreen() {
         <View style={[styles.container, { paddingBottom: insets.bottom + BottomTabInset }]}>
           <NBCard>
             <ThemedText type="title">Partner presence</ThemedText>
-            <ThemedText type="default" themeColor="textSecondary" style={styles.cardBody}>
+            <ThemedText type="small" themeColor="textSecondary" style={styles.cardBody}>
               Share moments with your partner after you connect. Bound photos are couple-only and do not
               have a solo mode.
             </ThemedText>
@@ -235,7 +237,7 @@ export default function PhotosScreen() {
     <View style={styles.fill}>
       {/* the viewfinder is an inset 3:4 rounded box on black, not a full-bleed preview */}
       <View style={[styles.viewfinder, previewSize, { marginTop: insets.top + Spacing.three }]}>
-        <CameraView ref={setCameraRef} style={styles.viewfinderCamera} facing={facing} flash={flash} />
+        {isFocused ? <CameraView ref={setCameraRef} style={styles.viewfinderCamera} facing={facing} flash={flash} /> : null}
 
         <Pressable
           onPress={() => setFlash(flash === 'off' ? 'on' : 'off')}

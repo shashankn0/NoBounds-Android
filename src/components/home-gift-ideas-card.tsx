@@ -70,7 +70,7 @@ export function HomeGiftIdeasCard({ coupleId }: { coupleId: string }) {
         </ThemedText>
       ) : featured ? (
         <View style={styles.body}>
-          <ThemedText type="smallBold">{featured.title}</ThemedText>
+          <ThemedText type="bodyBold">{featured.title}</ThemedText>
           {featured.summary ? (
             <ThemedText type="small" themeColor="textSecondary" style={styles.summary}>
               {featured.summary}

@@ -22,6 +22,8 @@ export type PaletteColors = {
   bubbleIncomingText: string;
   bubbleSystem: string;
   bubbleSystemText: string;
+  highlightReunion: string;
+  highlightSuccess: string;
 };
 
 export type Palette = {
@@ -59,6 +61,8 @@ export const Palettes: Record<PaletteId, Palette> = {
       bubbleIncomingText: '#2C2421',
       bubbleSystem: '#EBE2DC',
       bubbleSystemText: '#6B5C55',
+      highlightReunion: '#3B82F638',
+      highlightSuccess: '#22C55E2E',
     },
     dark: {
       background: '#1A1614',
@@ -82,6 +86,8 @@ export const Palettes: Record<PaletteId, Palette> = {
       bubbleIncomingText: '#F2EEEB',
       bubbleSystem: '#322C28',
       bubbleSystemText: '#A89F98',
+      highlightReunion: '#60A5FA59',
+      highlightSuccess: '#4ADE8047',
     },
   },
   ocean_calm: {
@@ -109,6 +115,8 @@ export const Palettes: Record<PaletteId, Palette> = {
       bubbleIncomingText: '#152E3C',
       bubbleSystem: '#E0E9F1',
       bubbleSystemText: '#526A7A',
+      highlightReunion: '#3B82F638',
+      highlightSuccess: '#22C55E2E',
     },
     dark: {
       background: '#0F1A22',
@@ -132,6 +140,8 @@ export const Palettes: Record<PaletteId, Palette> = {
       bubbleIncomingText: '#E8F0F5',
       bubbleSystem: '#243544',
       bubbleSystemText: '#94A8B8',
+      highlightReunion: '#60A5FA59',
+      highlightSuccess: '#4ADE8047',
     },
   },
   evergreen: {
@@ -159,6 +169,8 @@ export const Palettes: Record<PaletteId, Palette> = {
       bubbleIncomingText: '#1C2820',
       bubbleSystem: '#E4EAE2',
       bubbleSystemText: '#546458',
+      highlightReunion: '#3B82F638',
+      highlightSuccess: '#22C55E2E',
     },
     dark: {
       background: '#141A16',
@@ -182,6 +194,8 @@ export const Palettes: Record<PaletteId, Palette> = {
       bubbleIncomingText: '#ECF0ED',
       bubbleSystem: '#2C3830',
       bubbleSystemText: '#98A89C',
+      highlightReunion: '#60A5FA59',
+      highlightSuccess: '#4ADE8047',
     },
   },
   lavender_dusk: {
@@ -209,6 +223,8 @@ export const Palettes: Record<PaletteId, Palette> = {
       bubbleIncomingText: '#262032',
       bubbleSystem: '#E9E4F0',
       bubbleSystemText: '#645C72',
+      highlightReunion: '#3B82F638',
+      highlightSuccess: '#22C55E2E',
     },
     dark: {
       background: '#16141C',
@@ -232,6 +248,8 @@ export const Palettes: Record<PaletteId, Palette> = {
       bubbleIncomingText: '#F0ECF5',
       bubbleSystem: '#302C3A',
       bubbleSystemText: '#A8A0B4',
+      highlightReunion: '#60A5FA59',
+      highlightSuccess: '#4ADE8047',
     },
   },
   paper_minimal: {
@@ -259,6 +277,8 @@ export const Palettes: Record<PaletteId, Palette> = {
       bubbleIncomingText: '#1A1A18',
       bubbleSystem: '#F0F0EC',
       bubbleSystemText: '#5C5C58',
+      highlightReunion: '#3B82F638',
+      highlightSuccess: '#22C55E2E',
     },
     dark: {
       background: '#121210',
@@ -282,6 +302,8 @@ export const Palettes: Record<PaletteId, Palette> = {
       bubbleIncomingText: '#F2F2F0',
       bubbleSystem: '#2A2A28',
       bubbleSystemText: '#9A9A96',
+      highlightReunion: '#60A5FA59',
+      highlightSuccess: '#4ADE8047',
     },
   },
 };

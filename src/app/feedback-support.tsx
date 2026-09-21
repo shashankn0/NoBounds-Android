@@ -114,7 +114,7 @@ export default function FeedbackSupportScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { padding: Spacing.four, gap: Spacing.two },
+  container: { padding: 20, gap: 8 },
   helpRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.three },
   helpIcon: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
   helpText: { flex: 1 },

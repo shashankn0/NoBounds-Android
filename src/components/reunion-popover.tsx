@@ -1,26 +1,13 @@
 import { useEffect, useState } from 'react';
-import { Modal, Pressable, StyleSheet, View } from 'react-native';
+import { Modal, Pressable, StyleSheet, Switch, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { DatePickerField } from '@/components/date-picker-field';
 import { NBPrimaryButton, NBSecondaryButton } from '@/components/nb-button';
 import { ThemedText } from '@/components/themed-text';
 import { useTheme } from '@/hooks/use-theme';
+import { dateKey } from '@/lib/habits';
 import { fetchReunionDates, formatReunionDateRange, reunionStatus, updateReunionDates, type ReunionStatus } from '@/lib/reunion';
-
-// no date-picker library in the project (same constraint as settings/index.tsx's reunion
-// section) — start date is chosen from presets rather than a real calendar, so android can't
-// originate a multi-day "together" range the way ios's DatePicker range can
-const START_PRESETS = [
-  { label: 'In 2 weeks', days: 14 },
-  { label: 'In 1 month', days: 30 },
-  { label: 'In 3 months', days: 90 },
-];
-
-function isoDateInDays(days: number): string {
-  const target = new Date();
-  target.setDate(target.getDate() + days);
-  return target.toISOString().slice(0, 10);
-}
 
 // port of features/home/reunioncountdownpopover.swift — tapped from the "Paired with" header
 // label instead of navigating away, mirroring ios's .popover presentation
@@ -42,6 +29,9 @@ export function ReunionPopover({
   const [isEditing, setIsEditing] = useState(false);
   const [startDate, setStartDate] = useState<string | null>(null);
   const [endDate, setEndDate] = useState<string | null>(null);
+  const [draftStart, setDraftStart] = useState('');
+  const [draftEnd, setDraftEnd] = useState('');
+  const [includesEnd, setIncludesEnd] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -58,14 +48,30 @@ export function ReunionPopover({
       .finally(() => setLoading(false));
   }, [visible, coupleId]);
 
-  async function onSetReunion(days: number | null) {
+  // ios prepareDraftDates: start = the saved start (or today), end date toggled on only if one is saved
+  function openEditor() {
+    const today = dateKey(new Date());
+    setDraftStart(startDate ?? today);
+    setDraftEnd(endDate ?? startDate ?? today);
+    setIncludesEnd(!!endDate);
+    setError(null);
+    setIsEditing(true);
+  }
+
+  function onChangeStart(next: string) {
+    setDraftStart(next);
+    // keep the range valid: the end can't precede the start
+    if (draftEnd < next) setDraftEnd(next);
+  }
+
+  async function onSave() {
     setSaving(true);
     setError(null);
-    const nextStart = days === null ? null : isoDateInDays(days);
+    const nextEnd = includesEnd ? draftEnd : null;
     try {
-      await updateReunionDates(coupleId, nextStart, null);
-      setStartDate(nextStart);
-      setEndDate(null);
+      await updateReunionDates(coupleId, draftStart, nextEnd);
+      setStartDate(draftStart);
+      setEndDate(nextEnd);
       setIsEditing(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not save');
@@ -92,34 +98,34 @@ export function ReunionPopover({
                 Loading…
               </ThemedText>
             ) : isEditing ? (
-              <View style={styles.body}>
-                <ThemedText type="small" themeColor="textSecondary">
-                  When&apos;s your next visit?
-                </ThemedText>
-                <View style={styles.presetRow}>
-                  {START_PRESETS.map((preset) => (
-                    <Pressable
-                      key={preset.label}
-                      onPress={() => onSetReunion(preset.days)}
-                      disabled={saving}
-                      style={[styles.chip, { borderColor: theme.border }]}>
-                      <ThemedText type="small">{preset.label}</ThemedText>
-                    </Pressable>
-                  ))}
+              <View style={styles.editForm}>
+                <DatePickerField label="Start date" value={draftStart} onChange={onChangeStart} />
+
+                <View style={styles.toggleRow}>
+                  <ThemedText type="small" style={styles.toggleLabel}>
+                    Include end date
+                  </ThemedText>
+                  <Switch
+                    value={includesEnd}
+                    onValueChange={setIncludesEnd}
+                    trackColor={{ false: theme.textSecondary + '66', true: theme.accent }}
+                    thumbColor="#FFFFFF"
+                  />
                 </View>
+
+                {includesEnd ? <DatePickerField label="End date" value={draftEnd} onChange={setDraftEnd} minDate={draftStart} /> : null}
+
                 <View style={styles.editButtons}>
-                  {startDate ? (
-                    <View style={styles.editButton}>
-                      <NBSecondaryButton title="Clear date" onPress={() => onSetReunion(null)} disabled={saving} />
-                    </View>
-                  ) : null}
                   <View style={styles.editButton}>
                     <NBSecondaryButton title="Cancel" onPress={() => setIsEditing(false)} disabled={saving} />
+                  </View>
+                  <View style={styles.editButton}>
+                    <NBPrimaryButton title={saving ? 'Saving…' : 'Save'} onPress={onSave} disabled={saving} />
                   </View>
                 </View>
               </View>
             ) : (
-              <StatusContent status={status} startDate={startDate} endDate={endDate} theme={theme} onEdit={() => setIsEditing(true)} />
+              <StatusContent status={status} startDate={startDate} endDate={endDate} theme={theme} onEdit={openEditor} />
             )}
 
             {error ? (
@@ -157,9 +163,7 @@ function StatusContent({
     case 'noDateSet':
       return (
         <View style={styles.body}>
-          <ThemedText type="default" themeColor="textSecondary">
-            Set your next visit to start a countdown.
-          </ThemedText>
+          <ThemedText type="default">Set your next visit to start a countdown.</ThemedText>
           <View style={styles.primaryButton}>
             <NBPrimaryButton title="Set reunion date" onPress={onEdit} />
           </View>
@@ -198,9 +202,7 @@ function StatusContent({
     case 'past':
       return (
         <View style={styles.body}>
-          <ThemedText type="default" themeColor="textSecondary">
-            Your last reunion date has passed.
-          </ThemedText>
+          <ThemedText type="default">Your last reunion date has passed.</ThemedText>
           {rangeCaption}
           <View style={styles.primaryButton}>
             <NBPrimaryButton title="Set next reunion" onPress={onEdit} />
@@ -227,11 +229,13 @@ const styles = StyleSheet.create({
   card: { width: 320, maxWidth: '88%', borderRadius: 16, borderWidth: 1, padding: 16 },
   subtitle: { marginTop: 2 },
   body: { marginTop: 14, gap: 8, alignItems: 'flex-start' },
-  presetRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  chip: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, borderWidth: 1 },
-  editButtons: { flexDirection: 'row', gap: 10, marginTop: 4, alignSelf: 'stretch' },
+  // ios editForm: VStack spacing 12; the toggle label is .subheadline
+  editForm: { marginTop: 14, gap: 12, alignSelf: 'stretch' },
+  toggleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  toggleLabel: { fontSize: 14, lineHeight: 19 },
+  editButtons: { flexDirection: 'row', gap: 12, alignSelf: 'stretch' },
   editButton: { flex: 1 },
   primaryButton: { marginTop: 4, alignSelf: 'stretch' },
-  countdownNumber: { fontSize: 40, lineHeight: 46, fontWeight: '700' },
+  countdownNumber: { fontSize: 32, lineHeight: 38, fontWeight: '700' }, // ios .largeTitle.bold
   editLink: { marginTop: 2 },
 });

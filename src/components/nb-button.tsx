@@ -49,19 +49,22 @@ export function NBSecondaryButton({ title, onPress, disabled, compact }: NBButto
           opacity: disabled ? 0.5 : pressed ? 0.85 : 1,
         },
       ]}>
-      <ThemedText type="smallBold" style={styles.label}>
+      <ThemedText type="smallBold" style={[styles.label, styles.secondaryLabel]}>
         {title}
       </ThemedText>
     </Pressable>
   );
 }
 
+// ios: label is .body (semibold on primary, medium on secondary) with 14pt vertical padding; scaled
+// ~0.92 for the narrower android screen
 const styles = StyleSheet.create({
   base: {
-    paddingVertical: 14,
+    paddingVertical: 13,
     borderRadius: 12,
     alignItems: 'center',
   },
-  baseCompact: { paddingVertical: 9 },
-  label: { fontSize: 16 },
+  baseCompact: { paddingVertical: 8 },
+  label: { fontSize: 16, lineHeight: 21 },
+  secondaryLabel: { fontWeight: '500' },
 });

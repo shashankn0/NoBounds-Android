@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { router, useFocusEffect } from 'expo-router';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { HabitRow } from '@/components/habit-row';
@@ -21,14 +21,13 @@ import {
 } from '@/lib/habits';
 import { fetchImportantDates } from '@/lib/important-dates';
 import { getMonthGrid, getWeekDays } from '@/lib/mock/calendar';
+import { fetchReunionDates, isReunionDay, subscribeReunionChanges } from '@/lib/reunion';
 
 type DisplayMode = 'month' | 'week';
 
-// a green tint for "all habits done" day cells — ios pulls this from a per-palette
-// highlightSuccessBackground token this app doesn't have yet, so a fixed accent-independent
-// green stands in (same idea as ios: a color that reads as "done" regardless of palette)
-const ALL_DONE_BACKGROUND = '#34C75926';
-const ALL_DONE_TEXT = '#248A3D';
+// "all habits done" cells use the palette's highlightSuccess tint (green) and reunion days use
+// highlightReunion (blue), same tokens as ios's CalendarDayHighlight; reunion wins over all-done
+const NO_REUNION: { startDate: string | null; endDate: string | null } = { startDate: null, endDate: null };
 
 // same calendar day, ignoring time
 function isSameDay(a: Date, b: Date) {
@@ -44,7 +43,7 @@ function isSameMonth(a: Date, b: Date) {
 // weekday header + grid or a horizontal week strip, legend, and a "+" button for new habit /
 // new important date (habit-form.tsx). prev/next arrows page the viewed month or week; a
 // "today" link jumps back when you've navigated away from the current one.
-export function MonthCalendar() {
+export const MonthCalendar = memo(function MonthCalendar() {
   const theme = useTheme();
   const { session, couple } = useSession();
   const today = new Date();
@@ -54,60 +53,137 @@ export function MonthCalendar() {
   const [habits, setHabits] = useState<Habit[]>([]);
   const [completions, setCompletions] = useState<HabitCompletion[]>([]);
   const [importantDates, setImportantDates] = useState<ImportantDate[]>([]);
+  const [reunionState, setReunionState] = useState(NO_REUNION);
 
   const currentUserId = session?.user.id ?? null;
   const partnerId = couple?.partnerId ?? null;
+  const coupleId = couple?.id ?? null;
   const viewedYear = viewedDate.getFullYear();
   const viewedMonth = viewedDate.getMonth();
+  const reunion = coupleId ? reunionState : NO_REUNION;
 
-  const load = useCallback(async () => {
-    try {
-      const habitRows = await fetchHabits();
-      // covers the visible month plus a month on either side, so paging one step and streaks
-      // ending on any visible day both have real data without refetching on every nav tap
-      const from = new Date(viewedYear, viewedMonth - 2, 1);
-      const to = new Date(viewedYear, viewedMonth + 2, 0);
-      const [completionRows, dateRows] = await Promise.all([
-        fetchCompletionsInRange(
-          habitRows.map((h) => h.id),
-          dateKey(from),
-          dateKey(to)
-        ),
-        fetchImportantDates(),
-      ]);
-      setHabits(habitRows);
-      setCompletions(completionRows);
-      setImportantDates(dateRows);
-    } catch {
-      // the calendar card is a summary — calendar's own screen shows the real error state.
-    }
+  // paging months/weeks used to refetch everything from the network on every tap, and the day cells
+  // each re-scanned every completion — that's what made stepping through months laggy. now a wide
+  // window of completions is fetched once and only refetched when you page outside it.
+  const loadedRangeRef = useRef<{ from: string; to: string } | null>(null);
+  const habitsRef = useRef<Habit[]>([]);
+  const requestRef = useRef(0);
+  const viewedRef = useRef({ year: viewedYear, month: viewedMonth });
+  useEffect(() => {
+    viewedRef.current = { year: viewedYear, month: viewedMonth };
   }, [viewedYear, viewedMonth]);
 
-  useEffect(() => {
-    load();
-  }, [load]);
-
-  // matches on month+day for yearly-repeating dates, exact date otherwise
-  function hasImportantDate(day: Date) {
-    return importantDates.some((d) => {
-      const eventDate = new Date(`${d.event_date}T00:00:00`);
-      if (d.repeats_yearly) {
-        return eventDate.getMonth() === day.getMonth() && eventDate.getDate() === day.getDate();
+  // full = also refetch habits + important dates (focus / after a toggle); otherwise only the
+  // completions window is extended around the viewed month
+  const load = useCallback(
+    async (year: number, month: number, full: boolean) => {
+      const request = ++requestRef.current;
+      try {
+        const from = new Date(year, month - 3, 1);
+        const to = new Date(year, month + 4, 0);
+        const habitRows = full || habitsRef.current.length === 0 ? await fetchHabits(coupleId) : habitsRef.current;
+        const [completionRows, dateRows] = await Promise.all([
+          fetchCompletionsInRange(
+            habitRows.map((h) => h.id),
+            dateKey(from),
+            dateKey(to)
+          ),
+          full ? fetchImportantDates() : Promise.resolve(null),
+        ]);
+        if (request !== requestRef.current) return; // a newer load superseded this one
+        habitsRef.current = habitRows;
+        loadedRangeRef.current = { from: dateKey(from), to: dateKey(to) };
+        setHabits(habitRows);
+        setCompletions(completionRows);
+        if (dateRows) setImportantDates(dateRows);
+      } catch {
+        // the calendar card is a summary — calendar's own screen shows the real error state.
       }
-      return isSameDay(eventDate, day);
-    });
+    },
+    [coupleId]
+  );
+
+  // fresh habits/completions whenever the tab regains focus (e.g. back from the day sheet)
+  useFocusEffect(
+    useCallback(() => {
+      load(viewedRef.current.year, viewedRef.current.month, true);
+    }, [load])
+  );
+
+  // paging: only hit the network when the month (plus a month either side) isn't already loaded
+  useEffect(() => {
+    const range = loadedRangeRef.current;
+    if (!range) return; // the focus load above does the first fetch
+    const needFrom = dateKey(new Date(viewedYear, viewedMonth - 1, 1));
+    const needTo = dateKey(new Date(viewedYear, viewedMonth + 2, 0));
+    if (needFrom >= range.from && needTo <= range.to) return;
+    load(viewedYear, viewedMonth, false);
+  }, [viewedYear, viewedMonth, load]);
+
+  // the reunion comes from the same couples.reunion_* the "Paired with" popover edits, and
+  // refreshes the moment either editor saves
+  useEffect(() => {
+    if (!coupleId) return;
+    let cancelled = false;
+    const refresh = () => {
+      fetchReunionDates(coupleId)
+        .then((dates) => {
+          if (!cancelled) setReunionState(dates);
+        })
+        .catch(() => {});
+    };
+    refresh();
+    const unsubscribe = subscribeReunionChanges(refresh);
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
+  }, [coupleId]);
+
+  // prebuilt lookups so each of the ~42 day cells is O(1) instead of scanning every date/completion
+  const importantDateKeys = useMemo(() => {
+    const yearly = new Set<string>();
+    const exact = new Set<string>();
+    for (const d of importantDates) {
+      if (d.repeats_yearly) yearly.add(d.event_date.slice(5, 10));
+      else exact.add(d.event_date.slice(0, 10));
+    }
+    return { yearly, exact };
+  }, [importantDates]);
+
+  const completionsByDate = useMemo(() => {
+    const map = new Map<string, HabitCompletion[]>();
+    for (const c of completions) {
+      const list = map.get(c.completion_date);
+      if (list) list.push(c);
+      else map.set(c.completion_date, [c]);
+    }
+    return map;
+  }, [completions]);
+
+  function hasImportantDate(day: Date) {
+    const key = dateKey(day);
+    return importantDateKeys.exact.has(key) || importantDateKeys.yearly.has(key.slice(5));
   }
 
   // mirrors ios's CalendarViewModel.daySummary(for:) — satisfied vs total habits that apply
-  // that day, resolved against both partners' completions
+  // that day, resolved against both partners' completions (only that day's rows are scanned)
   const daySummary = useCallback(
     (day: Date) => {
       if (!currentUserId) return { satisfied: 0, total: 0 };
-      const statuses = todaysDayStatuses(habits, completions, currentUserId, partnerId, day);
+      const dayCompletions = completionsByDate.get(dateKey(day)) ?? [];
+      const statuses = todaysDayStatuses(habits, dayCompletions, currentUserId, partnerId, day);
       return { satisfied: statuses.filter((s) => s.isSatisfied).length, total: statuses.length };
     },
-    [habits, completions, currentUserId, partnerId]
+    [habits, completionsByDate, currentUserId, partnerId]
   );
+
+  // mirrors ios's CalendarViewModel.dayHighlight: reunion day beats all-habits-done
+  function dayFill(day: Date, allDone: boolean): string | undefined {
+    if (isReunionDay(dateKey(day), reunion.startDate, reunion.endDate)) return theme.highlightReunion;
+    if (allDone) return theme.highlightSuccess;
+    return undefined;
+  }
 
   // jump both viewed + selected date back to today
   function goToToday() {
@@ -136,7 +212,7 @@ export function MonthCalendar() {
 
   async function onToggleSelected(status: HabitDayStatus) {
     await setHabitCompletion(status.habit.id, status.dateKey, !status.myCompleted);
-    await load();
+    await load(viewedYear, viewedMonth, true);
   }
 
   const { weeks, weekdayLabels, monthLabel } = getMonthGrid(viewedDate);
@@ -168,7 +244,7 @@ export function MonthCalendar() {
         <Pressable onPress={() => (mode === 'month' ? shiftMonth(-1) : shiftWeek(-1))} style={styles.navButton}>
           <Ionicons name="chevron-back" size={18} color={theme.textPrimary} />
         </Pressable>
-        <ThemedText type="smallBold">{mode === 'month' ? monthLabel : weekRangeLabel}</ThemedText>
+        <ThemedText type="bodyBold">{mode === 'month' ? monthLabel : weekRangeLabel}</ThemedText>
         <Pressable onPress={() => (mode === 'month' ? shiftMonth(1) : shiftWeek(1))} style={styles.navButton}>
           <Ionicons name="chevron-forward" size={18} color={theme.textPrimary} />
         </Pressable>
@@ -186,7 +262,7 @@ export function MonthCalendar() {
         <>
           <View style={styles.weekRow}>
             {weekdayLabels.map((label) => (
-              <ThemedText key={label} type="small" themeColor="textSecondary" style={styles.cell}>
+              <ThemedText key={label} type="small" themeColor="textSecondary" style={[styles.cell, styles.weekdayLabel]}>
                 {label}
               </ThemedText>
             ))}
@@ -200,6 +276,7 @@ export function MonthCalendar() {
                 const dayHasImportantDate = dayDate ? hasImportantDate(dayDate) : false;
                 const summary = dayDate ? daySummary(dayDate) : { satisfied: 0, total: 0 };
                 const allDone = summary.total > 0 && summary.satisfied === summary.total;
+                const fill = dayDate ? dayFill(dayDate, allDone) : undefined;
                 return (
                   <Pressable
                     key={dayIndex}
@@ -208,18 +285,21 @@ export function MonthCalendar() {
                     style={[
                       styles.cell,
                       styles.dayCell,
-                      allDone && { backgroundColor: ALL_DONE_BACKGROUND },
-                      !allDone && isSelected && { backgroundColor: theme.accent + '26' },
-                      isToday && { borderColor: theme.accent, borderWidth: 1.5 },
+                      fill
+                        ? { backgroundColor: fill }
+                        : isSelected
+                          ? { backgroundColor: theme.accent + '26' }
+                          : isToday && { backgroundColor: theme.surfaceElevated },
+                      isToday && { borderColor: theme.accent },
                     ]}>
-                    <ThemedText type="small" style={isToday ? styles.todayText : undefined}>
+                    <ThemedText type="small" style={[styles.dayNumber, isToday && styles.todayText]}>
                       {day ?? ''}
                     </ThemedText>
                     {summary.total > 0 ? (
                       <ThemedText
                         type="small"
-                        themeColor={allDone ? undefined : 'textSecondary'}
-                        style={[styles.summaryText, allDone && { color: ALL_DONE_TEXT }]}>
+                        themeColor={allDone ? 'accent' : 'textSecondary'}
+                        style={styles.summaryText}>
                         {summary.satisfied}/{summary.total}
                       </ThemedText>
                     ) : null}
@@ -242,23 +322,23 @@ export function MonthCalendar() {
               const dayHasImportantDate = hasImportantDate(day.fullDate);
               const summary = daySummary(day.fullDate);
               const allDone = summary.total > 0 && summary.satisfied === summary.total;
+              const fill = dayFill(day.fullDate, allDone);
               return (
                 <Pressable key={day.fullDate.toISOString()} onPress={() => openDay(day.fullDate)}>
                   <View
                     style={[
                       styles.dayChip,
                       { borderColor: isToday ? theme.accent : theme.border, backgroundColor: theme.surface },
-                      allDone && { backgroundColor: ALL_DONE_BACKGROUND },
-                      !allDone && isSelected && { backgroundColor: theme.accent + '26' },
+                      fill ? { backgroundColor: fill } : isSelected && { backgroundColor: theme.accent + '26' },
                     ]}>
-                    <ThemedText type="small" themeColor={isSelected ? 'accent' : 'textSecondary'}>
+                    <ThemedText type="small" themeColor={isSelected ? 'accent' : 'textSecondary'} style={styles.weekdayLabel}>
                       {day.weekdayLabel}
                     </ThemedText>
-                    <ThemedText type="smallBold" themeColor={isSelected ? 'accent' : undefined}>
+                    <ThemedText type="bodyBold" themeColor={isSelected ? 'accent' : undefined}>
                       {day.date}
                     </ThemedText>
                     {summary.total > 0 ? (
-                      <ThemedText type="small" themeColor={isSelected ? 'accent' : 'textSecondary'}>
+                      <ThemedText type="small" themeColor={isSelected ? 'accent' : 'textSecondary'} style={styles.chipSummary}>
                         {summary.satisfied}/{summary.total}
                       </ThemedText>
                     ) : null}
@@ -292,18 +372,19 @@ export function MonthCalendar() {
 
       <View style={styles.legendRow}>
         <View style={styles.legend}>
-          <LegendItem swatchColor={ALL_DONE_BACKGROUND.slice(0, 7)} label="All habits done" />
+          <LegendItem swatchColor={theme.highlightSuccess} label="All habits done" />
+          <LegendItem swatchColor={theme.highlightReunion} label="Reunion" />
           <LegendItem icon="heart" label="Important date" />
         </View>
         <Pressable
           onPress={() => router.push('/habit-form')}
           style={[styles.addButton, { backgroundColor: theme.accent }]}>
-          <Ionicons name="add" size={18} color={theme.textOnAccent} />
+          <Ionicons name="add" size={16} color={theme.surface} />
         </Pressable>
       </View>
     </View>
   );
-}
+});
 
 function LegendItem({
   swatchColor,
@@ -323,7 +404,7 @@ function LegendItem({
       ) : icon ? (
         <Ionicons name={icon} size={12} color={theme.accent} />
       ) : null}
-      <ThemedText type="small" themeColor="textSecondary">
+      <ThemedText type="small" themeColor="textSecondary" style={styles.legendText}>
         {label}
       </ThemedText>
     </View>
@@ -339,8 +420,13 @@ const styles = StyleSheet.create({
   todayLink: { marginBottom: 8 },
   weekRow: { flexDirection: 'row' },
   cell: { flex: 1, textAlign: 'center', paddingVertical: 6 },
-  dayCell: { alignItems: 'center', justifyContent: 'center', borderRadius: 8, borderWidth: 1.5, borderColor: 'transparent' },
-  summaryText: { fontSize: 11 },
+  // ios MonthCalendarGrid: 44pt min cell height, 8pt radius, 1pt today border
+  dayCell: { alignItems: 'center', justifyContent: 'center', gap: 2, minHeight: 44, borderRadius: 8, borderWidth: 1, borderColor: 'transparent' },
+  weekdayLabel: { fontSize: 11, lineHeight: 15, fontWeight: '600' },
+  dayNumber: { fontSize: 14, lineHeight: 18 },
+  summaryText: { fontSize: 11, lineHeight: 14, fontWeight: '600' },
+  chipSummary: { fontSize: 11, lineHeight: 14 },
+  legendText: { fontSize: 11, lineHeight: 14 },
   importantDateDot: { position: 'absolute', top: 2, right: 2 },
   chipImportantDateDot: { position: 'absolute', top: 4, right: 4 },
   todayText: { fontWeight: '700' },
@@ -349,8 +435,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 2,
     borderWidth: 1,
-    borderRadius: 14,
-    paddingVertical: 10,
+    borderRadius: 10, // ios WeekStripView
+    paddingVertical: 8,
     paddingHorizontal: 12,
     minWidth: 56,
   },
@@ -360,5 +446,5 @@ const styles = StyleSheet.create({
   legend: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, flex: 1 },
   legendItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   legendSwatch: { width: 10, height: 10, borderRadius: 3 },
-  addButton: { width: 32, height: 32, borderRadius: 999, alignItems: 'center', justifyContent: 'center' },
+  addButton: { width: 28, height: 28, borderRadius: 999, alignItems: 'center', justifyContent: 'center' },
 });

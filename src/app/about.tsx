@@ -62,7 +62,7 @@ export default function AboutScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { padding: Spacing.four, gap: Spacing.three },
+  container: { padding: 20, gap: 16 },
   centered: { alignItems: 'center', gap: Spacing.two },
   centeredText: { textAlign: 'center' },
   iconBadge: { width: 48, height: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },

@@ -215,7 +215,7 @@ export default function DateIdeasScreen() {
               {MODES.map((m) => (
                 <Pressable key={m.id} onPress={() => setSelectedMode(m.id)} style={styles.segmentWrap}>
                   <View style={[styles.segment, selectedMode === m.id && { backgroundColor: theme.surface }]}>
-                    <ThemedText type="smallBold" numberOfLines={1}>
+                    <ThemedText type="bodyBold" numberOfLines={1}>
                       {m.label}
                     </ThemedText>
                   </View>

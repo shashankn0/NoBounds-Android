@@ -19,7 +19,7 @@ import type { FlashcardCard, FlashcardLanguage, FlashcardMastery, PetMessage, Us
 import { errorMessage } from '@/lib/supabase';
 import { fetchCards, fetchDecks, fetchProgress, updateCardProgress } from '@/lib/flashcards';
 import { mockGames } from '@/lib/mock/play';
-import { fetchPetMessages, fetchPets, petMood, sendPetMessage } from '@/lib/pets';
+import { fetchLastOpenedAt, fetchPetMessages, fetchPets, isPresenceNapping, petMood, sendPetMessage } from '@/lib/pets';
 
 // messages stay visible as a speech bubble for 12h — matches petmodels.swift's displaywindow
 const MESSAGE_DISPLAY_WINDOW_MS = 12 * 60 * 60 * 1000;
@@ -500,6 +500,9 @@ export default function PlayScreen() {
   // sender_user_id -> text, precomputed at fetch time (not render time) so the 12h window
   // check only ever calls Date.now() from an event handler, never from the render body
   const [visibleMessages, setVisibleMessages] = useState<Record<string, string>>({});
+  // owner user id -> true when that owner hasn't opened the app in 2h+ (their pet naps). computed at
+  // fetch time, like visibleMessages, so render never reads the clock
+  const [awayUserIds, setAwayUserIds] = useState<Record<string, boolean>>({});
   const [messageText, setMessageText] = useState('');
   const [sending, setSending] = useState(false);
   // locked while a draw-and-guess stroke is in progress — android's ScrollView can otherwise
@@ -519,6 +522,13 @@ export default function PlayScreen() {
     fetchPets(couple.id)
       .then(setPets)
       .catch(() => {});
+    // ios's PetPresenceRule: only the partner's pet follows their presence; yours only rests at night
+    if (couple.partnerId) {
+      const partnerId = couple.partnerId;
+      fetchLastOpenedAt(partnerId)
+        .then((lastOpenedAt) => setAwayUserIds({ [partnerId]: isPresenceNapping(lastOpenedAt) }))
+        .catch(() => {});
+    }
     fetchPetMessages(couple.id)
       .then((messages: PetMessage[]) => {
         const now = Date.now();
@@ -598,7 +608,7 @@ export default function PlayScreen() {
           <>
             <NBCard>
               <ThemedText type="title">Pets unlock when you pair</ThemedText>
-              <ThemedText type="default" themeColor="textSecondary" style={styles.cardBody}>
+              <ThemedText type="small" themeColor="textSecondary" style={styles.cardBody}>
                 Connect with your partner to adopt a companion and share a play area together.
               </ThemedText>
               <View style={styles.cardButton}>
@@ -608,7 +618,7 @@ export default function PlayScreen() {
 
             <NBCard>
               <ThemedText type="title">Shared play area</ThemedText>
-              <ThemedText type="default" themeColor="textSecondary" style={styles.cardBody}>
+              <ThemedText type="default" style={styles.cardBody}>
                 Each of you chooses and names one pet. Both companions wander together in a cozy space on
                 this tab.
               </ThemedText>
@@ -619,6 +629,7 @@ export default function PlayScreen() {
             <PetPlayArea
               pets={[myPet, partnerPet].filter((p): p is UserPet => p !== null)}
               messageByUserId={visibleMessages}
+              awayUserIds={awayUserIds}
               onSelectPet={(pet) => router.push({ pathname: '/pet', params: { petId: pet.id } })}
             />
             {!myPet ? (
@@ -639,7 +650,7 @@ export default function PlayScreen() {
                 <Pressable onPress={onSendMessage} disabled={sending || messageText.trim().length === 0} hitSlop={8}>
                   <Ionicons
                     name="arrow-up-circle"
-                    size={30}
+                    size={24}
                     color={messageText.trim().length === 0 ? theme.textSecondary : theme.accent}
                   />
                 </Pressable>
@@ -654,18 +665,24 @@ export default function PlayScreen() {
                       key={pet.id}
                       onPress={() => router.push({ pathname: '/pet', params: { petId: pet.id } })}
                       style={[styles.petRow, index === 0 && !!partnerPet && { borderBottomWidth: 1, borderColor: theme.separator }]}>
+                      {/* ios PetPlaySection.petRow: name / bio / meters stacked, chevron trailing */}
                       <View style={styles.petRowText}>
                         <ThemedText type="smallBold">{pet.name}</ThemedText>
-                        <ThemedText type="small" themeColor="textSecondary" numberOfLines={1}>
+                        <ThemedText type="small" themeColor="textSecondary" numberOfLines={2}>
                           {pet.bio ?? 'No bio yet — tap to add one.'}
                         </ThemedText>
+                        <View style={styles.petMeters}>
+                          <View style={styles.petMeter}>
+                            <Ionicons name="restaurant" size={10} color={theme.accent} />
+                            <MiniMeter value={petMood(pet).fullness} theme={theme} />
+                          </View>
+                          <View style={styles.petMeter}>
+                            <Ionicons name="heart" size={10} color={theme.accent} />
+                            <MiniMeter value={petMood(pet).happiness} theme={theme} />
+                          </View>
+                        </View>
                       </View>
-                      <View style={styles.petMeters}>
-                        <Ionicons name="restaurant" size={14} color={theme.textSecondary} />
-                        <MiniMeter value={petMood(pet).fullness} theme={theme} />
-                        <Ionicons name="heart" size={14} color={theme.accent} style={styles.meterGap} />
-                        <MiniMeter value={petMood(pet).happiness} theme={theme} />
-                      </View>
+                      <Ionicons name="chevron-forward" size={12} color={theme.textSecondary} />
                     </Pressable>
                   ) : null
                 )}
@@ -674,7 +691,8 @@ export default function PlayScreen() {
           </>
         )}
 
-        <ThemedText type="subtitle" style={styles.sectionHeading}>
+        {/* ios PlayGamesSection: NBTitleText("Games") */}
+        <ThemedText type="title" style={styles.sectionHeading}>
           Games
         </ThemedText>
         <View style={styles.grid}>
@@ -682,8 +700,8 @@ export default function PlayScreen() {
             <Pressable key={game.id} onPress={() => setActiveGame(game.id)} style={styles.gridItem}>
               <NBCard style={styles.gridCard}>
                 <View style={styles.gridCardTop}>
-                  <Ionicons name={game.icon} size={22} color={theme.accent} />
-                  <Ionicons name="chevron-forward" size={16} color={theme.textSecondary} />
+                  <Ionicons name={game.icon} size={18} color={theme.accent} />
+                  <Ionicons name="chevron-forward" size={13} color={theme.textSecondary} />
                 </View>
                 <ThemedText type="smallBold">{game.title}</ThemedText>
                 <ThemedText type="small" themeColor="textSecondary" numberOfLines={1}>
@@ -711,14 +729,14 @@ const styles = StyleSheet.create({
   centered: { alignItems: 'center', gap: 4 },
   body: { marginTop: 12 },
   composerRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  composerInput: { flex: 1, fontSize: 15, paddingVertical: 4 },
+  composerInput: { flex: 1, fontSize: 14, paddingVertical: 4 }, // ios composer field is .subheadline
   rowsCard: { paddingVertical: 4 },
   petRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12 },
-  petRowText: { flex: 1, gap: 2 },
-  petMeters: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  meterGap: { marginLeft: 6 },
-  miniMeterTrack: { width: 36, height: 6, borderRadius: 3, overflow: 'hidden' },
-  miniMeterFill: { height: '100%', borderRadius: 3 },
+  petRowText: { flex: 1, gap: 4 },
+  petMeters: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  petMeter: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  miniMeterTrack: { width: 56, height: 4, borderRadius: 2, overflow: 'hidden' }, // ios ProgressView width 56
+  miniMeterFill: { height: '100%', borderRadius: 2 },
   centeredText: { textAlign: 'center' },
   emptyIcon: { fontSize: 40 },
   cardBody: { marginTop: 8 },

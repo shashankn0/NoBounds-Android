@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router, useFocusEffect } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Image, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -23,13 +23,11 @@ import {
   type TimelineFilter,
 } from '@/lib/timeline';
 
-// matches timelinefilter.chips in ../nobounds/nobounds/core/domain/timeline/timelinemodels.swift
+// trimmed from ios's timelinefilter.chips per the product ask: one "All memories" bucket (the
+// unfiltered feed, so memory/gratitude/prompt items all live in it) plus Photos, Milestones, Favorites
 const FILTER_CHIPS: { id: TimelineFilter; label: string }[] = [
-  { id: 'all', label: 'All' },
-  { id: 'memory', label: 'Memories' },
-  { id: 'gratitude', label: 'Gratitude' },
+  { id: 'all', label: 'All memories' },
   { id: 'photo', label: 'Photos' },
-  { id: 'prompt', label: 'Prompts' },
   { id: 'milestone', label: 'Milestones' },
   { id: 'favorites', label: 'Favorites' },
 ];
@@ -100,33 +98,47 @@ export default function TimelineScreen() {
     setThumbnails(byEntityId);
   }, []);
 
+  const requestRef = useRef(0);
   const load = useCallback(async () => {
     if (!couple) return;
+    const request = ++requestRef.current;
     setLoading(true);
     setError(null);
     try {
       const feed = await fetchTimelineFeed({ filter: activeFilter, search });
+      if (request !== requestRef.current) return; // a newer search/filter superseded this response
       setItems(feed);
       await loadThumbnails(feed);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not load timeline');
+      if (request === requestRef.current) setError(err instanceof Error ? err.message : 'Could not load timeline');
     } finally {
-      setLoading(false);
+      if (request === requestRef.current) setLoading(false);
     }
   }, [couple, activeFilter, search, loadThumbnails]);
 
-  // refetch whenever this tab regains focus, so a memory saved via memory-form shows up on return
+  // refetch whenever this tab regains focus, so a memory saved via memory-form shows up on return.
+  // this must only fire on focus: it used to depend on `load`, which changes with every keystroke,
+  // so typing in the search box triggered an immediate fetch per key on top of the debounced one.
+  const loadRef = useRef(load);
+  useEffect(() => {
+    loadRef.current = load;
+  }, [load]);
   useFocusEffect(
     useCallback(() => {
-      load();
-    }, [load])
+      loadRef.current();
+    }, [])
   );
 
-  // debounce search so we're not refetching on every keystroke
+  // debounce search/filter changes so we're not refetching on every keystroke (the first run is the
+  // mount, which the focus effect above already covers)
+  const didMountRef = useRef(false);
   useEffect(() => {
-    const timeout = setTimeout(load, 300);
+    if (!didMountRef.current) {
+      didMountRef.current = true;
+      return;
+    }
+    const timeout = setTimeout(() => loadRef.current(), 300);
     return () => clearTimeout(timeout);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search, activeFilter]);
 
   async function onToggleFavorite(item: TimelineFeedItem) {
@@ -153,7 +165,7 @@ export default function TimelineScreen() {
         {!couple ? (
           <NBCard>
             <ThemedText type="title">Shared timeline</ThemedText>
-            <ThemedText type="default" themeColor="textSecondary" style={styles.cardBody}>
+            <ThemedText type="small" themeColor="textSecondary" style={styles.cardBody}>
               Memories and habits you add now will merge into a shared timeline when you connect with your
               partner.
             </ThemedText>
@@ -163,6 +175,7 @@ export default function TimelineScreen() {
           </NBCard>
         ) : null}
 
+        <View style={styles.feedSection}>
         <View style={[styles.searchBar, { backgroundColor: theme.surface, borderColor: theme.border }]}>
           <Ionicons name="search" size={18} color={theme.textSecondary} style={styles.searchIcon} />
           <TextInput
@@ -175,14 +188,16 @@ export default function TimelineScreen() {
         </View>
 
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipsRow}>
+          {/* ios: a plain surface capsule with a border, not an accent-filled button */}
           <Pressable
             onPress={() => router.push('/memory-form')}
-            style={[styles.chip, styles.addChip, { backgroundColor: theme.accent }]}>
-            <Ionicons name="add" size={18} color={theme.textOnAccent} />
+            style={[styles.chip, styles.addChip, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+            <Ionicons name="add" size={14} color={theme.textPrimary} />
           </Pressable>
           {FILTER_CHIPS.map((chip) => {
             const active = chip.id === activeFilter;
-            const chipColor = active ? theme.textOnAccent : theme.textPrimary;
+            // ios: selected = accent text on a 15% accent tint; unselected = primary text on surface
+            const chipColor = active ? theme.accent : theme.textPrimary;
             return (
               <Pressable
                 key={chip.id}
@@ -190,12 +205,12 @@ export default function TimelineScreen() {
                 style={[
                   styles.chip,
                   styles.filterChip,
-                  { backgroundColor: active ? theme.accentMuted : theme.surface, borderColor: theme.border },
+                  { backgroundColor: active ? theme.accent + '26' : theme.surface, borderColor: theme.border },
                 ]}>
                 {chip.id === 'favorites' ? (
                   <Ionicons name={active ? 'star' : 'star-outline'} size={14} color={chipColor} />
                 ) : null}
-                <ThemedText type="small" style={{ color: chipColor }}>
+                <ThemedText type="small" style={{ color: chipColor, fontWeight: '600' }}>
                   {chip.label}
                 </ThemedText>
               </Pressable>
@@ -203,7 +218,7 @@ export default function TimelineScreen() {
           })}
         </ScrollView>
 
-        {!couple ? null : loading ? (
+        {!couple ? null : loading && items.length === 0 ? (
           <ThemedText type="default" themeColor="textSecondary">
             Loading…
           </ThemedText>
@@ -222,36 +237,37 @@ export default function TimelineScreen() {
         ) : (
           <View style={styles.feed}>
             {items.map((item) => (
-              <NBCard key={`${item.item_type}-${item.item_id}`} style={styles.itemCard}>
+              <NBCard key={`${item.item_type}-${item.item_id}`}>
+                {/* ios TimelineRowView: tap opens, long-press (context menu) toggles the favorite */}
                 <Pressable
                   onPress={item.item_type === 'photo' ? () => router.push({ pathname: '/photo-detail', params: { photoId: item.entity_id } }) : undefined}
-                  disabled={item.item_type !== 'photo'}
+                  onLongPress={() => onToggleFavorite(item)}
                   style={styles.itemPressable}>
                   {thumbnails[item.entity_id] ? (
-                    <Image source={{ uri: thumbnails[item.entity_id] }} style={styles.itemThumb} />
+                    <Image source={{ uri: thumbnails[item.entity_id] }} style={styles.itemThumb} resizeMethod="resize" />
                   ) : (
-                    <Ionicons name={TYPE_ICON[item.item_type]} size={20} color={theme.accent} style={styles.itemIcon} />
+                    <Ionicons name={TYPE_ICON[item.item_type]} size={18} color={theme.accent} style={styles.itemIcon} />
                   )}
                   <View style={styles.itemText}>
-                    <ThemedText type="default">{timelineHeaderLine(item)}</ThemedText>
+                    <View style={styles.itemHeaderRow}>
+                      <ThemedText type="default" style={styles.itemTitle}>
+                        {timelineHeaderLine(item)}
+                      </ThemedText>
+                      {item.is_favorite ? <Ionicons name="star" size={12} color={theme.accent} /> : null}
+                    </View>
                     {item.subtitle ? (
-                      <ThemedText type="small" themeColor="textSecondary">
+                      <ThemedText type="small" themeColor="textSecondary" style={styles.itemSubtitle}>
                         {item.subtitle}
                       </ThemedText>
                     ) : null}
                   </View>
                 </Pressable>
-                <Pressable onPress={() => onToggleFavorite(item)} hitSlop={8}>
-                  <Ionicons
-                    name={item.is_favorite ? 'star' : 'star-outline'}
-                    size={20}
-                    color={item.is_favorite ? theme.accent : theme.textSecondary}
-                  />
-                </Pressable>
               </NBCard>
             ))}
           </View>
         )}
+
+        </View>
 
         {error ? (
           <ThemedText type="small" themeColor="destructive">
@@ -264,23 +280,27 @@ export default function TimelineScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { padding: 20, gap: 16 },
+  // ios TimelineTabView: 16 side padding, 8 top, 20 between the calendar card and the feed section
+  container: { paddingHorizontal: 16, paddingTop: 8, gap: 20 },
+  feedSection: { gap: 12 },
   cardBody: { marginTop: 8 },
   cardButton: { marginTop: 12 },
-  searchBar: { flexDirection: 'row', alignItems: 'center', borderRadius: 14, borderWidth: 1, paddingHorizontal: 12 },
+  searchBar: { flexDirection: 'row', alignItems: 'center', borderRadius: 12, borderWidth: 1, paddingHorizontal: 12 },
   searchIcon: { marginRight: 8 },
-  searchInput: { flex: 1, paddingVertical: 12, fontSize: 15 },
+  searchInput: { flex: 1, paddingVertical: 10, fontSize: 16 },
   chipsRow: { gap: 8, paddingRight: 8 },
-  chip: { paddingVertical: 8, paddingHorizontal: 14, borderRadius: 18, borderWidth: 1 },
+  chip: { paddingVertical: 8, paddingHorizontal: 12, borderRadius: 999, borderWidth: 1 },
   filterChip: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  addChip: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 0 },
+  addChip: { alignItems: 'center', justifyContent: 'center' },
   centered: { alignItems: 'center', gap: 4 },
   centeredText: { textAlign: 'center' },
   emptyIcon: { marginBottom: 4 },
-  feed: { gap: 12 },
-  itemCard: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
-  itemPressable: { flex: 1, flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
-  itemIcon: { marginTop: 2 },
-  itemThumb: { width: 44, height: 44, borderRadius: 10 },
-  itemText: { flex: 1, gap: 2 },
+  feed: { gap: 8 },
+  itemPressable: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, paddingVertical: 4 },
+  itemIcon: { width: 28, textAlign: 'center' },
+  itemThumb: { width: 64, height: 64, borderRadius: 12 },
+  itemText: { flex: 1, gap: 4 },
+  itemHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  itemTitle: { flex: 1, fontWeight: '500' },
+  itemSubtitle: { fontSize: 14, lineHeight: 19 },
 });

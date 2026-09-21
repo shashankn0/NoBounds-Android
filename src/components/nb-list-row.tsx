@@ -18,7 +18,7 @@ export function NBListRow({ icon, title, onPress, trailing }: NBListRowProps) {
 
   return (
     <Pressable onPress={onPress} style={({ pressed }) => [styles.row, pressed && { opacity: 0.7 }]}>
-      <Ionicons name={icon} size={22} color={theme.accent} style={styles.icon} />
+      <Ionicons name={icon} size={20} color={theme.accent} style={styles.icon} />
       <ThemedText type="default" style={styles.title}>
         {title}
       </ThemedText>
@@ -27,14 +27,16 @@ export function NBListRow({ icon, title, onPress, trailing }: NBListRowProps) {
           {trailing}
         </ThemedText>
       ) : null}
-      <Ionicons name="chevron-forward" size={18} color={theme.textSecondary} />
+      <Ionicons name="chevron-forward" size={13} color={theme.textSecondary} />
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
-  row: { flexDirection: 'row', alignItems: 'center', paddingVertical: 14 },
-  icon: { width: 28 },
+  // ios settingsRow (settings + profile): 12pt gap, 28pt icon column, 4pt vertical padding — the 12pt
+  // between rows comes from the card's own gap
+  row: { flexDirection: 'row', alignItems: 'center', paddingVertical: 4 },
+  icon: { width: 28, marginRight: 12, textAlign: 'center' },
   title: { flex: 1 },
   trailing: { marginRight: 6 },
 });

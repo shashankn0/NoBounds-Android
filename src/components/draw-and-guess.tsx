@@ -276,7 +276,7 @@ export function DrawAndGuess({ onDrawStart, onDrawEnd }: { onDrawStart?: () => v
           <ThemedText type="title" style={styles.centeredText}>
             Player {drawerNumber}, you&apos;re drawing!
           </ThemedText>
-          <ThemedText type="default" themeColor="textSecondary" style={styles.centeredText}>
+          <ThemedText type="default" style={styles.centeredText}>
             Make sure Player {guesserNumber} isn&apos;t looking, then reveal your secret word.
           </ThemedText>
           <View style={styles.centerButton}>

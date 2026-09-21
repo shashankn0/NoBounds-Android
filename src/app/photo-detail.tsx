@@ -139,7 +139,7 @@ export default function PhotoDetailScreen() {
         </ThemedText>
       ) : (
         <ScrollView contentContainerStyle={[styles.body, { paddingBottom: insets.bottom + 20 }]}>
-          {imageUrl ? <Image source={{ uri: imageUrl }} style={styles.image} /> : <View style={styles.image} />}
+          {imageUrl ? <Image source={{ uri: imageUrl }} style={styles.image} resizeMethod="resize" /> : <View style={styles.image} />}
 
           {isOwn ? (
             editingCaption ? (

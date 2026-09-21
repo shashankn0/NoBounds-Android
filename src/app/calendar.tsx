@@ -9,7 +9,6 @@ import { NBCard } from '@/components/nb-card';
 import { NBPrimaryButton } from '@/components/nb-button';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { Spacing } from '@/constants/theme';
 import { useSession } from '@/contexts/session-context';
 import { useTheme } from '@/hooks/use-theme';
 import {
@@ -157,8 +156,8 @@ export default function CalendarScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: Spacing.four },
-  list: { gap: Spacing.three },
+  container: { flex: 1, padding: 20 },
+  list: { gap: 16 },
   headingRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12 },
   centered: { alignItems: 'center', gap: 4 },
   centeredText: { textAlign: 'center' },

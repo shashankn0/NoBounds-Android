@@ -1,3 +1,4 @@
+import { useIsFocused } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Image, View } from 'react-native';
 
@@ -20,14 +21,17 @@ export function PetSprite({ speciesKey, animation = 'idle', scale = 2, flipHoriz
   const [frame, setFrame] = useState(0);
   const info = PET_SPECIES[speciesKey];
   const frameCount = info.frames[animation];
+  // tab screens stay mounted when you leave them, so an unfocused sprite must stop ticking — four
+  // sprites at 8fps each were a constant background re-render load on the js thread
+  const focused = useIsFocused();
 
   useEffect(() => {
-    if (paused) return;
+    if (paused || !focused) return;
     const id = setInterval(() => {
       setFrame((f) => (f + 1) % frameCount);
     }, 1000 / FPS);
     return () => clearInterval(id);
-  }, [frameCount, speciesKey, animation, paused]);
+  }, [frameCount, speciesKey, animation, paused, focused]);
 
   const size = info.frameSize * scale;
   const sheetWidth = info.frameSize * frameCount * scale;

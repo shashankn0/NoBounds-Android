@@ -37,20 +37,21 @@ export function ScreenHeader({ showPairing = false }: ScreenHeaderProps) {
   );
 
   return (
-    <View style={[styles.row, { paddingTop: insets.top + 8 }]}>
+    <View style={[styles.row, { paddingTop: insets.top + 4 }]}>
       <Pressable
         onPress={() => router.push('/notifications')}
         style={[styles.iconButton, hasUnread && { backgroundColor: theme.accentMuted + '59' }]}>
-        <Ionicons name="notifications" size={20} color={hasUnread ? theme.accent : theme.textPrimary} />
+        <Ionicons name="notifications" size={17} color={hasUnread ? theme.accent : theme.textPrimary} />
       </Pressable>
 
       {showPairing && couple ? (
         <>
           <Pressable onPress={() => setShowReunionPopover(true)} style={[styles.centerLabel, styles.pairingRow]} hitSlop={8}>
-            <ThemedText type="smallBold" numberOfLines={1}>
+            {/* ios PairedWithHeaderLabel: .caption, textSecondary; chevron is caption2 semibold at 80% */}
+            <ThemedText type="small" themeColor="textSecondary" numberOfLines={1}>
               Paired with: {couple.partnerName?.trim() || 'partner'}
             </ThemedText>
-            <Ionicons name="chevron-down" size={14} color={theme.textSecondary} style={styles.chevron} />
+            <Ionicons name="chevron-down" size={11} color={theme.textSecondary + 'CC'} style={styles.chevron} />
           </Pressable>
           <ReunionPopover
             visible={showReunionPopover}
@@ -67,9 +68,9 @@ export function ScreenHeader({ showPairing = false }: ScreenHeaderProps) {
         onPress={() => router.push('/profile')}
         style={[styles.avatarButton, { backgroundColor: theme.accentMuted }]}>
         {featuredAvatarUrl ? (
-          <Image source={{ uri: featuredAvatarUrl }} style={styles.avatarImage} />
+          <Image source={{ uri: featuredAvatarUrl }} style={styles.avatarImage} resizeMethod="resize" />
         ) : (
-          <Ionicons name="person" size={20} color={theme.textOnAccent} />
+          <Ionicons name="person" size={17} color={theme.textOnAccent} />
         )}
       </Pressable>
     </View>
@@ -82,24 +83,25 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 20,
-    paddingBottom: 12,
+    paddingBottom: 8,
   },
+  // ios toolbar buttons (notificationtoolbarbutton / profiletoolbarbutton) are 32x32
   iconButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
   },
   avatarButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
   },
-  avatarImage: { width: 40, height: 40 },
+  avatarImage: { width: 32, height: 32 },
   centerLabel: { flex: 1, alignItems: 'center' },
   pairingRow: { flexDirection: 'row', justifyContent: 'center' },
   chevron: { marginLeft: 4 },

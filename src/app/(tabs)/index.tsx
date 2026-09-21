@@ -216,7 +216,7 @@ export default function HomeScreen() {
                 <CyclePhaseBar phase={cyclePhase.currentPhase} progress={cyclePhase.phaseProgress} />
               </View>
             ) : (
-              <ThemedText type="default" themeColor="textSecondary" style={styles.cardBody}>
+              <ThemedText type="small" themeColor="textSecondary" style={styles.cardBody}>
                 Optionally track your cycle and share selected details with your partner for support.
               </ThemedText>
             )}
@@ -249,7 +249,7 @@ export default function HomeScreen() {
         {!couple ? (
           <NBCard>
             <ThemedText type="title">Invite your partner</ThemedText>
-            <ThemedText type="default" themeColor="textSecondary" style={styles.cardBody}>
+            <ThemedText type="small" themeColor="textSecondary" style={styles.cardBody}>
               Create a code to connect. You can keep using No Bounds while you wait.
             </ThemedText>
             <View style={styles.cardButton}>
@@ -262,7 +262,7 @@ export default function HomeScreen() {
             {lastBound && lastBoundUrl ? (
               <>
                 <Pressable onPress={() => router.push({ pathname: '/photo-detail', params: { photoId: lastBound.id } })}>
-                  <Image source={{ uri: lastBoundUrl }} style={styles.lastBoundImage} />
+                  <Image source={{ uri: lastBoundUrl }} style={styles.lastBoundImage} resizeMethod="resize" />
                 </Pressable>
                 {lastBound.mood_tag ? (
                   <ThemedText type="small" themeColor="accent" style={[styles.lastBoundMood, styles.lastBoundMoodText]}>
@@ -271,7 +271,7 @@ export default function HomeScreen() {
                 ) : null}
               </>
             ) : (
-              <ThemedText type="default" themeColor="textSecondary" style={styles.cardBody}>
+              <ThemedText type="default" style={styles.cardBody}>
                 Waiting for a photo from your partner.
               </ThemedText>
             )}
@@ -306,7 +306,7 @@ export default function HomeScreen() {
           ) : (
             <NBCard>
               <ThemedText type="title">Today&apos;s habits</ThemedText>
-              <ThemedText type="default" themeColor="textSecondary" style={styles.habitEmpty}>
+              <ThemedText type="small" themeColor="textSecondary" style={styles.habitEmpty}>
                 Start with personal habits—they&apos;ll merge when you connect.
               </ThemedText>
               <View style={styles.cardButton}>
@@ -325,7 +325,7 @@ export default function HomeScreen() {
             <ThemedText type="title">Extensions</ThemedText>
             <Ionicons name="grid" size={20} color={theme.textSecondary} />
           </View>
-          <ThemedText type="default" themeColor="textSecondary" style={styles.cardBody}>
+          <ThemedText type="small" themeColor="textSecondary" style={styles.cardBody}>
             Turn optional home cards on or off, and tell us what you&apos;d like next.
           </ThemedText>
           <View style={styles.cardButton}>

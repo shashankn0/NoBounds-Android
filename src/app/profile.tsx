@@ -160,14 +160,14 @@ export default function ProfileScreen() {
         </NBCard>
 
         <NBCard>
-          <ThemedText type="small" themeColor="textSecondary">
+          <ThemedText type="small" themeColor="textSecondary" style={styles.infoLabel}>
             Time zone
           </ThemedText>
           <ThemedText type="default" style={styles.rowValue}>
             {(profile?.time_zone ?? deviceTimeZone).replace(/_/g, ' ')}
           </ThemedText>
           <View style={[styles.divider, { backgroundColor: theme.separator }]} />
-          <ThemedText type="small" themeColor="textSecondary">
+          <ThemedText type="small" themeColor="textSecondary" style={styles.infoLabel}>
             Member since
           </ThemedText>
           <ThemedText type="default" style={styles.rowValue}>
@@ -194,7 +194,7 @@ export default function ProfileScreen() {
 
 function AvatarCircle({ url, size, theme }: { url: string | null; size: number; theme: ReturnType<typeof useTheme> }) {
   const circleStyle = { width: size, height: size, borderRadius: size / 2 };
-  if (url) return <Image source={{ uri: url }} style={circleStyle} />;
+  if (url) return <Image source={{ uri: url }} style={circleStyle} resizeMethod="resize" />;
   return (
     <View style={[styles.avatarPlaceholder, circleStyle, { backgroundColor: theme.accentMuted }]}>
       <Ionicons name="person" size={size * 0.46} color={theme.textOnAccent} />
@@ -204,6 +204,8 @@ function AvatarCircle({ url, size, theme }: { url: string | null; size: number; 
 
 const styles = StyleSheet.create({
   container: { padding: 20, gap: 16 },
+  // ios profileInfoRow: .caption.semibold label over a .body value
+  infoLabel: { fontWeight: '600' },
   avatarSection: { alignItems: 'center', gap: 8, marginBottom: 4 },
   avatarPlaceholder: { alignItems: 'center', justifyContent: 'center' },
   avatarPairRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
@@ -213,7 +215,7 @@ const styles = StyleSheet.create({
   input: { borderBottomWidth: 1, paddingVertical: 8, fontSize: 16, marginTop: 4, marginBottom: 4 },
   cardButton: { marginTop: 8 },
   savedText: { marginTop: 8 },
-  rowValue: { marginTop: 2, marginBottom: 8 },
+  rowValue: { marginTop: 4, marginBottom: 8 },
   divider: { height: 1, marginBottom: 8 },
-  rowsCard: { paddingVertical: 4 },
+  rowsCard: { gap: 12 }, // ios: rows sit 12pt apart inside the card
 });

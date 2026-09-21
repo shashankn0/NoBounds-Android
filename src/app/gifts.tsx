@@ -111,7 +111,7 @@ export default function GiftsScreen() {
           {KINDS.map((k) => (
             <Pressable key={k.id} onPress={() => setSelectedKind(k.id)} style={styles.segmentWrap}>
               <View style={[styles.segment, selectedKind === k.id && { backgroundColor: theme.surface }]}>
-                <ThemedText type="smallBold" numberOfLines={1}>
+                <ThemedText type="bodyBold" numberOfLines={1}>
                   {k.label}
                 </ThemedText>
               </View>

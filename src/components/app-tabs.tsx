@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import type { Href } from 'expo-router';
-import { Tabs, TabList, TabTrigger, TabSlot, type TabTriggerSlotProps } from 'expo-router/ui';
+import { Tabs, TabList, TabTrigger, TabSlot, defaultTabsSlotRender, type TabTriggerSlotProps } from 'expo-router/ui';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -24,7 +24,16 @@ const TABS: { name: string; href: Href; label: string; icon: IconName }[] = [
 export default function AppTabs() {
   return (
     <Tabs>
-      <TabSlot style={{ flex: 1 }} />
+      {/* tab screens stay mounted after their first visit, so without freezing, every hidden tab kept
+          re-rendering in the background — pet sprite timers (8fps each), the play area's wander loops,
+          the camera preview — starving the js thread and making the visible tab (timeline) laggy.
+          freezeOnBlur suspends a hidden screen's rendering until it's focused again. */}
+      <TabSlot
+        style={{ flex: 1 }}
+        renderFn={(descriptor, options) =>
+          defaultTabsSlotRender({ ...descriptor, options: { ...descriptor.options, freezeOnBlur: true } }, options)
+        }
+      />
       <TabList asChild>
         <CustomTabList>
           {TABS.map((tab) => (
@@ -52,7 +61,7 @@ function TabButton({
   return (
     <Pressable {...props} style={styles.tabButton}>
       <View style={[styles.badge, { backgroundColor: isFocused ? theme.surface : 'transparent' }]}>
-        <Ionicons name={icon} size={34} color={itemColor} />
+        <Ionicons name={icon} size={24} color={itemColor} />
         <ThemedText
           type="small"
           style={[styles.label, { color: itemColor }]}
@@ -72,7 +81,8 @@ function CustomTabList(props: { children?: React.ReactNode }) {
 
   return (
     // the +8 keeps the pill off android's own nav bar (gesture pill or 3-button row) rather
-    // than letting it sit flush against it
+    // than letting it sit flush against it. the pill is ~46px tall, so scroll screens reserve
+    // BottomTabInset (constants/theme.ts) above the system inset to clear it
     <View style={[styles.tabListContainer, { paddingBottom: (insets.bottom || 12) + 8 }]}>
       <View style={[styles.innerContainer, { backgroundColor: theme.tabBarBackground, borderColor: theme.border }]}>
         {props.children}
@@ -86,7 +96,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     bottom: 0,
     width: '100%',
-    paddingHorizontal: 10,
+    paddingHorizontal: 20,
     paddingTop: 6,
     alignItems: 'center',
   },
@@ -98,29 +108,30 @@ const styles = StyleSheet.create({
     // capsule (matches the pill buttons/search bar elsewhere), regardless of content height.
     borderRadius: 999,
     borderWidth: 1,
-    paddingVertical: 3,
+    paddingVertical: 2,
     paddingHorizontal: 4,
     width: '100%',
-    maxWidth: 480,
+    maxWidth: 420,
     shadowColor: '#000000',
     shadowOpacity: 0.08,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 4,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 3,
   },
   tabButton: { flex: 1 },
   badge: {
     alignSelf: 'stretch',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 2,
+    paddingVertical: 3,
     paddingHorizontal: 4,
-    borderRadius: 22,
+    borderRadius: 18,
     // android-only quirk: a view's backgroundColor going from absent to present on an
     // already-mounted node can render square instead of picking up borderRadius on that
     // update — the isFocused ? surface : 'transparent' above (always-present value, never an
     // added/removed key) is the real fix. overflow:'hidden' is belt-and-suspenders.
     overflow: 'hidden',
   },
-  label: { fontSize: 12, lineHeight: 13, fontWeight: '600' },
+  // ios tab labels are caption2 (11pt)
+  label: { fontSize: 10, lineHeight: 12, fontWeight: '600' },
 });

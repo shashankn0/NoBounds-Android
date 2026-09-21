@@ -145,7 +145,7 @@ export default function ChatScreen() {
         <View style={[styles.container, { paddingBottom: insets.bottom + BottomTabInset }]}>
           <NBCard>
             <ThemedText type="title">Chat</ThemedText>
-            <ThemedText type="default" themeColor="textSecondary" style={styles.cardBody}>
+            <ThemedText type="small" themeColor="textSecondary" style={styles.cardBody}>
               Chat and prompts unlock after you connect with your partner.
             </ThemedText>
             <View style={styles.cardButton}>
@@ -221,7 +221,7 @@ export default function ChatScreen() {
           />
         </View>
         <Pressable onPress={onSend} disabled={!canSend} hitSlop={8}>
-          <Ionicons name="arrow-up-circle" size={36} color={canSend ? theme.accent : theme.textSecondary} />
+          <Ionicons name="arrow-up-circle" size={32} color={canSend ? theme.accent : theme.textSecondary + '66'} />
         </Pressable>
       </View>
     </ThemedView>
@@ -256,7 +256,7 @@ function ChatRow({ message, isMine }: { message: ChatMessage; isMine: boolean })
   if (message.kind === 'photo_reply' && message.photoUrl) {
     return (
       <View style={[styles.photoColumn, isMine && styles.photoColumnMine]}>
-        <Image source={{ uri: message.photoUrl }} style={[styles.photo, { borderColor: theme.border }]} resizeMode="cover" />
+        <Image source={{ uri: message.photoUrl }} style={[styles.photo, { borderColor: theme.border }]} resizeMode="cover" resizeMethod="resize" />
         {bubble}
       </View>
     );
@@ -277,12 +277,13 @@ const styles = StyleSheet.create({
   loadingMore: { paddingVertical: 8 },
   errorText: { paddingHorizontal: 20, paddingBottom: 4 },
   promptColumn: { gap: 4 },
-  promptCaption: { textAlign: 'center', fontWeight: '600' },
+  promptCaption: { textAlign: 'center', fontWeight: '600', fontSize: 11 }, // ios .caption2.semibold
   photoColumn: { alignItems: 'flex-start', gap: 4 },
   photoColumnMine: { alignItems: 'flex-end' },
   photo: { width: 180, height: 180, borderRadius: 18, borderWidth: 1 },
   composerBar: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 12, paddingTop: 8 },
   composerAddButton: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
-  composerField: { flex: 1, borderRadius: 999, borderWidth: 1, paddingHorizontal: 16 },
-  composerInput: { paddingVertical: 10, fontSize: 16 },
+  // ios PromptComposeBar: 20pt-radius field, 12/8 padding, 32pt send arrow
+  composerField: { flex: 1, borderRadius: 20, borderWidth: 1, paddingHorizontal: 12 },
+  composerInput: { paddingVertical: 8, fontSize: 16 },
 });

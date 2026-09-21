@@ -40,8 +40,8 @@ export const Spacing = {
 } as const;
 
 // clearance scroll content needs above the floating tab bar (see app-tabs.tsx), on top of
-// the safe-area bottom inset each screen already adds separately. sized with headroom above
-// the bar's own computed height (~63px content + 6px top pad + the 8px it holds itself off
-// the system nav bar) so content doesn't get clipped on devices reporting a small/zero inset.
-export const BottomTabInset = Platform.select({ ios: 50, android: 90 }) ?? 0;
+// the safe-area bottom inset each screen already adds separately. the slimmed pill is ~46px tall +
+// 6px top pad + the 8px it holds itself off the system nav bar (=60px), plus ~12px of breathing
+// room so the last card never touches it.
+export const BottomTabInset = Platform.select({ ios: 50, android: 72 }) ?? 0;
 export const MaxContentWidth = 800; // caps content width on web/tablet

@@ -1,12 +1,14 @@
 import { DarkTheme, DefaultTheme, Stack, ThemeProvider, type Theme } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect, useMemo, useRef } from 'react';
+import { AppState } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
 import { Palettes, type PaletteId } from '@/constants/palettes';
 import { SessionProvider, useSession } from '@/contexts/session-context';
 import { PaletteProvider, usePalette } from '@/contexts/palette-context';
+import { markAppOpened } from '@/lib/pets';
 import { registerForPush, watchNotificationTaps, watchPushTokenRefresh } from '@/lib/push';
 
 SplashScreen.preventAutoHideAsync();
@@ -69,6 +71,24 @@ function RootNavigator() {
     };
   }, [userId, isLoading]);
 
+  // stamp profiles.last_opened_at on launch, on every return to the foreground, and every 15 min
+  // while the app stays open — the partner's play area (ios and android) puts your pet to sleep
+  // if this goes stale for 2h
+  useEffect(() => {
+    if (!userId || isLoading) return;
+    markAppOpened(userId);
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') markAppOpened(userId);
+    });
+    const heartbeat = setInterval(() => {
+      if (AppState.currentState === 'active') markAppOpened(userId);
+    }, 15 * 60 * 1000);
+    return () => {
+      sub.remove();
+      clearInterval(heartbeat);
+    };
+  }, [userId, isLoading]);
+
   if (isLoading) {
     return null; // splash stays up until session/theme are ready
   }
@@ -83,7 +103,7 @@ function RootNavigator() {
         {/* signed in -> main tabs + every modal/detail screen */}
         <Stack.Protected guard={!!session}>
           <Stack.Screen name="(tabs)" />
-          <Stack.Screen name="pairing" options={{ presentation: 'modal', headerShown: true, title: 'Pairing' }} />
+          <Stack.Screen name="pairing" options={{ presentation: 'modal', headerShown: false }} />
           <Stack.Screen name="profile" options={{ headerShown: true, title: 'Profile' }} />
           <Stack.Screen name="notifications" options={{ headerShown: false }} />
           <Stack.Screen name="settings/index" options={{ headerShown: true, title: 'Settings' }} />

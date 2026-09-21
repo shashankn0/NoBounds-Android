@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import { useIsFocused } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, View, type GestureResponderEvent, type LayoutChangeEvent } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withDelay, withSequence, withSpring, withTiming } from 'react-native-reanimated';
@@ -15,6 +16,9 @@ type Point = { x: number; y: number };
 type PetPlayAreaProps = {
   pets: UserPet[];
   messageByUserId: Record<string, string | undefined>;
+  // owner user ids whose pet is napping because they haven't opened the app in 2h+ (ios's
+  // PetPresenceRule); night-rest hours are handled locally
+  awayUserIds?: Record<string, boolean>;
   onSelectPet: (pet: UserPet) => void;
 };
 
@@ -24,9 +28,8 @@ type PetPlayAreaProps = {
 // play area. also adds a random chance to settle into a longer daytime nap between wanders
 // (paused sprite + "Zzz" bubble, reusing the same visual ios only uses for night/away naps)
 // — not something ios's own model does, called out here since it's a deliberate addition.
-// still not ported: partner-presence-based napping (needs a partner "last opened app"
-// timestamp this app doesn't track yet) — night-rest hours still apply since that's a
-// purely local-clock check.
+// partner-presence napping is ported too: the play screen passes awayUserIds (from the
+// partner's profiles.last_opened_at), and an away owner's pet stops wandering and shows "Zzz".
 const STEPS = 24;
 const STEP_MS = 1000 / 9;
 const PAUSE_MIN_MS = 2600;
@@ -52,7 +55,9 @@ function hypot(a: Point, b: Point) {
   return Math.hypot(a.x - b.x, a.y - b.y);
 }
 
-export function PetPlayArea({ pets, messageByUserId, onSelectPet }: PetPlayAreaProps) {
+const NO_AWAY: Record<string, boolean> = {};
+
+export function PetPlayArea({ pets, messageByUserId, awayUserIds = NO_AWAY, onSelectPet }: PetPlayAreaProps) {
   const theme = useTheme();
   const [bounds, setBounds] = useState({ width: 0, height: 0 });
   const [positions, setPositions] = useState<Record<string, Point>>({});
@@ -62,10 +67,14 @@ export function PetPlayArea({ pets, messageByUserId, onSelectPet }: PetPlayAreaP
   const [toy, setToy] = useState<(Point & { id: number }) | null>(null);
   const [greetingPoint, setGreetingPoint] = useState<Point | null>(null);
   const [isNightRest] = useState(() => NIGHT_REST_HOURS.has(new Date().getHours()));
+  // the play tab stays mounted after you leave it; its wander/greeting loops must not keep running
+  const focused = useIsFocused();
 
   // one "generation" number per pet — bumping it makes any in-flight loop for that pet notice
   // it's been superseded (a new wander cycle, or a toy chase) and stop, even after an `await`
   const generationRef = useRef<Record<string, number>>({});
+  // whether a pet's wander loop is currently alive (a bumped generation alone can't say)
+  const runningRef = useRef<Record<string, boolean>>({});
   const positionsRef = useRef(positions);
   const boundsRef = useRef(bounds);
   const isGreetingActiveRef = useRef(false);
@@ -180,6 +189,7 @@ export function PetPlayArea({ pets, messageByUserId, onSelectPet }: PetPlayAreaP
   function startWander(petId: string) {
     const gen = (generationRef.current[petId] ?? 0) + 1;
     generationRef.current[petId] = gen;
+    runningRef.current[petId] = true;
     wanderLoop(petId, gen);
   }
 
@@ -194,7 +204,7 @@ export function PetPlayArea({ pets, messageByUserId, onSelectPet }: PetPlayAreaP
   }
 
   function isNapping(pet: UserPet) {
-    return isNightRest || !!daytimeSleep[pet.id];
+    return isNightRest || !!awayUserIds[pet.user_id] || !!daytimeSleep[pet.id];
   }
 
   function onDropToy(e: GestureResponderEvent) {
@@ -238,16 +248,23 @@ export function PetPlayArea({ pets, messageByUserId, onSelectPet }: PetPlayAreaP
       return next;
     });
 
+    // resting (night hours, or the owner is away) stops that pet's loop; when it wakes up again the
+    // loop restarts — this effect re-runs whenever the away set changes
     for (const pet of pets) {
-      if (isNightRest) {
-        generationRef.current[pet.id] = (generationRef.current[pet.id] ?? 0) + 1;
+      const resting = !focused || isNightRest || !!awayUserIds[pet.user_id];
+      if (resting) {
+        if (runningRef.current[pet.id] || !generationRef.current[pet.id]) {
+          generationRef.current[pet.id] = (generationRef.current[pet.id] ?? 0) + 1;
+        }
+        runningRef.current[pet.id] = false;
+        setDaytimeSleep((prev) => ({ ...prev, [pet.id]: false }));
         setAnimations((prev) => ({ ...prev, [pet.id]: 'idle' }));
-      } else if (!generationRef.current[pet.id]) {
+      } else if (!runningRef.current[pet.id]) {
         startWander(pet.id);
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bounds.width, bounds.height, pets.map((p) => p.id).join(',')]);
+  }, [focused, bounds.width, bounds.height, pets.map((p) => p.id).join(','), pets.map((p) => `${p.id}:${awayUserIds[p.user_id] ? 1 : 0}`).join(',')]);
 
   // stop every loop on unmount
   useEffect(
@@ -255,6 +272,9 @@ export function PetPlayArea({ pets, messageByUserId, onSelectPet }: PetPlayAreaP
       for (const id of Object.keys(generationRef.current)) {
         generationRef.current[id] = (generationRef.current[id] ?? 0) + 1;
       }
+      // the loops above are now dead, so the seeding effect must be allowed to restart them
+      // (matters on a dev fast refresh, where refs survive but cleanups still run)
+      runningRef.current = {};
     },
     []
   );

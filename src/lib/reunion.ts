@@ -54,10 +54,30 @@ export async function fetchReunionDates(coupleId: string): Promise<{ startDate: 
   return { startDate: row?.reunion_start_date ?? null, endDate: row?.reunion_end_date ?? null };
 }
 
+// the header popover, settings and the calendar all read couples.reunion_*; editors notify here so
+// anything already on screen (like the calendar's reunion highlight) refreshes right away
+const reunionListeners = new Set<() => void>();
+
+export function subscribeReunionChanges(listener: () => void): () => void {
+  reunionListeners.add(listener);
+  return () => {
+    reunionListeners.delete(listener);
+  };
+}
+
+// mirrors ReunionCountdownCalculator.isReunionDay: inside the range when there's an end date,
+// otherwise only the start day. dateKey is a local yyyy-mm-dd, compared as a plain string
+export function isReunionDay(dateKey: string, startDate: string | null, endDate: string | null): boolean {
+  if (!startDate) return false;
+  if (endDate) return dateKey >= startDate && dateKey <= endDate;
+  return dateKey === startDate;
+}
+
 export async function updateReunionDates(coupleId: string, startDate: string | null, endDate: string | null): Promise<void> {
   const { error } = await supabase
     .from('couples')
     .update({ reunion_start_date: startDate, reunion_end_date: endDate, updated_at: new Date().toISOString() })
     .eq('id', coupleId);
   if (error) throw error;
+  reunionListeners.forEach((listener) => listener());
 }

@@ -33,7 +33,10 @@ export function HabitRow({ status, streak, onToggle }: HabitRowProps) {
       <Ionicons name={icon.name} size={24} color={icon.color} style={styles.icon} />
 
       <View style={styles.text}>
-        <ThemedText type="smallBold">{habit.title}</ThemedText>
+        {/* ios HabitRowView: title is .body medium (500), status is .caption */}
+        <ThemedText type="default" style={styles.title}>
+          {habit.title}
+        </ThemedText>
         <ThemedText type="small" themeColor="textSecondary">
           {status.statusLabel}
         </ThemedText>
@@ -114,6 +117,7 @@ const styles = StyleSheet.create({
   pressed: { opacity: 0.6 },
   icon: { flexShrink: 0 },
   text: { flex: 1, gap: 2 },
+  title: { fontWeight: '500' },
   streak: { flexShrink: 0 },
   scopeChip: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 999, flexShrink: 0 },
   scopeChipText: { fontWeight: '600' },

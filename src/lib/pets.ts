@@ -27,6 +27,31 @@ export async function sendPetMessage(coupleId: string, text: string): Promise<vo
 
   const { error } = await supabase.from('pet_messages').insert({ couple_id: coupleId, sender_user_id: senderUserId, text });
   if (error) throw error;
+  // sending a message means you're here right now — keep your pet awake on your partner's screen
+  markAppOpened(senderUserId);
+}
+
+// port of PetPresenceRule (core/domain/pet/petmood.swift): a partner's pet naps when its owner
+// hasn't opened the app in over 2 hours, or has never recorded an open
+const NAP_THRESHOLD_MS = 2 * 60 * 60 * 1000;
+
+export function isPresenceNapping(lastOpenedAt: string | null, now: number = Date.now()): boolean {
+  if (!lastOpenedAt) return true;
+  return now - new Date(lastOpenedAt).getTime() > NAP_THRESHOLD_MS;
+}
+
+// ios's PetRepository.markAppOpened: stamps profiles.last_opened_at (profiles_update_own covers
+// the write). ios reads this column for its play area, so without it the Android user's pet
+// always looked asleep on the iOS side. best-effort, failures are ignored
+export async function markAppOpened(userId: string): Promise<void> {
+  await supabase.from('profiles').update({ last_opened_at: new Date().toISOString() }).eq('id', userId);
+}
+
+// the partner's last app open (profiles_select_partner lets you read your partner's row)
+export async function fetchLastOpenedAt(userId: string): Promise<string | null> {
+  const { data, error } = await supabase.from('profiles').select('last_opened_at').eq('id', userId).maybeSingle();
+  if (error) throw error;
+  return (data as { last_opened_at: string | null } | null)?.last_opened_at ?? null;
 }
 
 // either partner can feed/play with a couple pet — matches the real record_pet_care(...) rpc

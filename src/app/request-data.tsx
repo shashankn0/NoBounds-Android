@@ -18,7 +18,7 @@ export default function RequestDataScreen() {
       <ThemedView style={styles.container}>
         <NBCard>
           <ThemedText type="title">Request my data</ThemedText>
-          <ThemedText type="default" themeColor="textSecondary" style={styles.body}>
+          <ThemedText type="default" style={styles.body}>
             We can provide a copy of the personal data associated with your account. Submit a request and our team
             will respond by email.
           </ThemedText>
@@ -38,7 +38,7 @@ export default function RequestDataScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { padding: Spacing.four, gap: Spacing.three },
+  container: { padding: 20, gap: 16 },
   body: { marginTop: Spacing.two },
   caption: { marginTop: Spacing.two },
 });

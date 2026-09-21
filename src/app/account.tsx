@@ -4,7 +4,6 @@ import { Alert, Pressable, StyleSheet } from 'react-native';
 import { NBCard } from '@/components/nb-card';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { Spacing } from '@/constants/theme';
 import { useSession } from '@/contexts/session-context';
 import { functionErrorMessage, supabase } from '@/lib/supabase';
 
@@ -39,7 +38,7 @@ export default function AccountScreen() {
   return (
     <ThemedView style={styles.container}>
       <NBCard>
-        <ThemedText type="default" themeColor="textSecondary">
+        <ThemedText type="small" themeColor="textSecondary" style={styles.subheadline}>
           Permanently remove your account and all data stored with NoBounds.
         </ThemedText>
       </NBCard>
@@ -56,5 +55,6 @@ export default function AccountScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: Spacing.four, gap: Spacing.three },
+  subheadline: { fontSize: 14, lineHeight: 19 }, // ios .subheadline
+  container: { flex: 1, padding: 20, gap: 16 },
 });

@@ -29,13 +29,30 @@ export type HabitCompletion = {
 const HABIT_COLUMNS =
   'id, couple_id, owner_user_id, title, owner_scope, completion_policy, sort_order, created_at, habit_kind, reminder_hour';
 
-// all of the caller's habits, solo + shared (rls filters the rest)
-export async function fetchHabits(): Promise<Habit[]> {
-  const { data, error } = await supabase
-    .from('habits')
-    .select(HABIT_COLUMNS)
-    .is('archived_at', null)
-    .order('sort_order', { ascending: true });
+// the caller's active habits, scoped exactly like ios's HabitsRepository.fetchActiveHabits: paired
+// users see only the couple's habits, solo users only their own couple_id-null ones. rls alone
+// returns both, and pairing leaves the pre-pairing solo system habits behind — unscoped, that
+// showed "Week's Bound" twice on Sundays (once solo, once couple)
+export async function fetchHabits(knownCoupleId?: string | null): Promise<Habit[]> {
+  // getSession reads the local session (getUser is a network round trip)
+  const { data: sessionData } = await supabase.auth.getSession();
+  const userId = sessionData.session?.user.id;
+  if (!userId) throw new Error('Not signed in');
+
+  // callers that already know the couple (the session context) skip the membership lookup
+  let coupleId: string | null;
+  if (knownCoupleId !== undefined) {
+    coupleId = knownCoupleId;
+  } else {
+    const { data: membership, error: membershipError } = await supabase.from('couple_members').select('couple_id').limit(1);
+    if (membershipError) throw membershipError;
+    coupleId = (membership as { couple_id: string }[] | null)?.[0]?.couple_id ?? null;
+  }
+
+  let query = supabase.from('habits').select(HABIT_COLUMNS).is('archived_at', null);
+  query = coupleId ? query.eq('couple_id', coupleId) : query.is('couple_id', null).eq('owner_user_id', userId);
+
+  const { data, error } = await query.order('sort_order', { ascending: true });
   if (error) throw error;
   return (data as Habit[]) ?? [];
 }

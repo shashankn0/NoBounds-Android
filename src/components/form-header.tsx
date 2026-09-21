@@ -50,7 +50,7 @@ export function FormHeader({
             <Pressable onPress={onLeftPress} style={[styles.pill, { backgroundColor: theme.surface }]}>
               {leftIcon ? <Ionicons name={leftIcon} size={20} color={theme.textPrimary} /> : null}
               {leftLabel ? (
-                <ThemedText type="smallBold" themeColor="accent">
+                <ThemedText type="default">
                   {leftLabel}
                 </ThemedText>
               ) : null}
@@ -59,7 +59,7 @@ export function FormHeader({
         </View>
       ) : null}
 
-      <ThemedText type="smallBold" style={[styles.title, titleAlign === 'left' && styles.titleLeft]} numberOfLines={1}>
+      <ThemedText type="bodyBold" style={[styles.title, titleAlign === 'left' && styles.titleLeft]} numberOfLines={1}>
         {title}
       </ThemedText>
 
@@ -71,7 +71,7 @@ export function FormHeader({
             onPress={onRightPress}
             disabled={rightDisabled}
             style={[styles.pill, { backgroundColor: theme.surface, opacity: rightDisabled ? 0.5 : 1 }]}>
-            <ThemedText type="smallBold" themeColor={rightDisabled ? 'textSecondary' : 'accent'}>
+            <ThemedText type="bodyBold" themeColor={rightDisabled ? 'textSecondary' : 'accent'}>
               {rightLabel}
             </ThemedText>
           </Pressable>

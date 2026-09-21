@@ -288,7 +288,7 @@ function ExtensionRowItem({
       <Pressable style={styles.rowText} onPress={() => onToggle(!enabled)}>
         <View style={styles.rowTitleLine}>
           <Ionicons name={ext.icon} size={14} color={theme.accent} />
-          <ThemedText type="smallBold">{ext.title}</ThemedText>
+          <ThemedText type="bodyBold">{ext.title}</ThemedText>
         </View>
         <ThemedText type="small" themeColor="textSecondary" style={styles.rowDescription}>
           {ext.description}
