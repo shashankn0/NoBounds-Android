@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Play Store Launch Checklist</title>
+<style>
+  :root {
+    --bg: #F6EFEA;
+    --surface: #FFFFFF;
+    --text: #2C2421;
+    --text-secondary: #6B5C55;
+    --accent: #A16654;
+    --border: #E5D5CC;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1A1614;
+      --surface: #2A2522;
+      --text: #F2EEEB;
+      --text-secondary: #A89F98;
+      --accent: #D9907A;
+      --border: #3D3530;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    margin: 0;
+    padding: 40px 20px 80px;
+    line-height: 1.5;
+  }
+  .page { max-width: 680px; margin: 0 auto; }
+  h1 {
+    font-size: 26px;
+    margin: 0 0 6px;
+  }
+  .subtitle {
+    color: var(--text-secondary);
+    font-size: 15px;
+    margin: 0 0 32px;
+  }
+  .progress {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 14px 18px;
+    margin-bottom: 28px;
+    font-size: 14px;
+    color: var(--text-secondary);
+  }
+  .progress strong { color: var(--text); }
+  section {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 18px 20px;
+    margin-bottom: 16px;
+  }
+  h2 {
+    font-size: 16px;
+    margin: 0 0 12px;
+  }
+  ul { list-style: none; margin: 0; padding: 0; }
+  li {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 7px 0;
+    font-size: 14.5px;
+  }
+  ul ul { margin-top: 6px; margin-left: 26px; }
+  input[type="checkbox"] {
+    margin-top: 3px;
+    width: 17px;
+    height: 17px;
+    accent-color: var(--accent);
+    flex-shrink: 0;
+  }
+  label { cursor: pointer; }
+  li.done label { color: var(--text-secondary); text-decoration: line-through; }
+  code {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 1px 5px;
+    font-size: 0.92em;
+  }
+  a { color: var(--accent); }
+  footer {
+    text-align: center;
+    color: var(--text-secondary);
+    font-size: 13px;
+    margin-top: 24px;
+  }
+</style>
+</head>
+<body>
+<div class="page">
+  <h1>Launch Checklist</h1>
+  <p class="subtitle">NoBounds-Android &rarr; Play Store</p>
+
+  <div class="progress"><strong id="progressCount">0 / 0</strong> steps done — checks are saved on this device.</div>
+
+  <section>
+    <h2>1. Before you touch Play Console</h2>
+    <ul>
+      <li><input type="checkbox" id="c1-1"><label for="c1-1">Test on a real device with a <strong>release build</strong>, not the dev client (dev builds are slower and behave differently)</label></li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>2. Google Play Developer account</h2>
+    <ul>
+      <li><input type="checkbox" id="c2-1"><label for="c2-1">Go to <a href="https://play.google.com/console/signup" target="_blank" rel="noopener">play.google.com/console/signup</a></label></li>
+      <li><input type="checkbox" id="c2-2"><label for="c2-2">Pay the one-time $25 registration fee</label></li>
+      <li><input type="checkbox" id="c2-3"><label for="c2-3">Verify your identity (can take a few days) — do this early, it's the slowest step</label></li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>3. App assets you need ready</h2>
+    <ul>
+      <li><input type="checkbox" id="c3-1"><label for="c3-1">App icon (already have one — <code>assets/images/icon.png</code>)</label></li>
+      <li><input type="checkbox" id="c3-2"><label for="c3-2">Feature graphic: 1024&times;500 px banner image</label></li>
+      <li><input type="checkbox" id="c3-3"><label for="c3-3">At least 2 phone screenshots (Play Console will tell you exact sizes)</label></li>
+      <li><input type="checkbox" id="c3-4"><label for="c3-4">Short description (80 characters max)</label></li>
+      <li><input type="checkbox" id="c3-5"><label for="c3-5">Full description (4000 characters max)</label></li>
+      <li><input type="checkbox" id="c3-6"><label for="c3-6">Privacy policy URL (you already have one: the link used in Settings &rarr; Privacy Policy)</label></li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>4. Firebase / push notifications (if you want push working at launch)</h2>
+    <ul>
+      <li><input type="checkbox" id="c4-1"><label for="c4-1">Generate the Firebase service-account key (Firebase console &rarr; Project settings &rarr; Service accounts)</label></li>
+      <li><input type="checkbox" id="c4-2"><label for="c4-2">Add it to Supabase as the <code>FCM_SERVICE_ACCOUNT_JSON</code> secret</label></li>
+      <li><input type="checkbox" id="c4-3"><label for="c4-3">Test that a push actually arrives on a real device</label></li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>5. Build the real app</h2>
+    <ul>
+      <li><input type="checkbox" id="c5-1"><label for="c5-1">Run: <code>eas build --platform android --profile production</code></label></li>
+      <li><input type="checkbox" id="c5-2"><label for="c5-2">Wait for it to finish (produces an <code>.aab</code> file — that's what Play Store wants, not an <code>.apk</code>)</label></li>
+      <li><input type="checkbox" id="c5-3"><label for="c5-3">Install and test that build on a real phone before uploading anywhere</label></li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>6. Set up the app in Play Console</h2>
+    <ul>
+      <li><input type="checkbox" id="c6-1"><label for="c6-1">Play Console &rarr; Create app</label></li>
+      <li><input type="checkbox" id="c6-2"><label for="c6-2">Fill in: app name, default language, app or game, free or paid</label></li>
+      <li><input type="checkbox" id="c6-3"><label for="c6-3">Complete the <strong>App content</strong> section (required before you can publish):</label></li>
+      <ul>
+        <li><input type="checkbox" id="c6-3a"><label for="c6-3a">Privacy policy URL</label></li>
+        <li><input type="checkbox" id="c6-3b"><label for="c6-3b">Data safety form (what data you collect — location isn't collected, but photos, messages, etc. are)</label></li>
+        <li><input type="checkbox" id="c6-3c"><label for="c6-3c">Content rating questionnaire</label></li>
+        <li><input type="checkbox" id="c6-3d"><label for="c6-3d">Target audience / age</label></li>
+        <li><input type="checkbox" id="c6-3e"><label for="c6-3e">Government apps / ads declarations (you'll answer "no" to most of these)</label></li>
+      </ul>
+    </ul>
+  </section>
+
+  <section>
+    <h2>7. Upload and release</h2>
+    <ul>
+      <li><input type="checkbox" id="c7-1"><label for="c7-1">Go to <strong>Testing &rarr; Internal testing</strong> first (not straight to production)</label></li>
+      <li><input type="checkbox" id="c7-2"><label for="c7-2">Upload the <code>.aab</code> file</label></li>
+      <li><input type="checkbox" id="c7-3"><label for="c7-3">Add yourself (and Shaan) as testers by email</label></li>
+      <li><input type="checkbox" id="c7-4"><label for="c7-4">Install from the internal testing link and confirm it works</label></li>
+      <li><input type="checkbox" id="c7-5"><label for="c7-5">Once confirmed, promote the release to <strong>Production</strong> (or use Closed/Open testing first if you want more people to try it)</label></li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>8. After submitting to Production</h2>
+    <ul>
+      <li><input type="checkbox" id="c8-1"><label for="c8-1">Google reviews it — usually a few hours to a few days for a first submission</label></li>
+      <li><input type="checkbox" id="c8-2"><label for="c8-2">Once approved, it's live on the Play Store</label></li>
+      <li><input type="checkbox" id="c8-3"><label for="c8-3">Future updates: bump <code>version</code> in <code>app.config.js</code>, run the build command again, upload the new <code>.aab</code></label></li>
+    </ul>
+  </section>
+
+  <footer>Checked-off state is saved only in this browser, on this device.</footer>
+</div>
+
+<script>
+  (function () {
+    var boxes = Array.prototype.slice.call(document.querySelectorAll('input[type="checkbox"]'));
+    var KEY = 'playStoreChecklist';
+    var saved = {};
+    try {
+      saved = JSON.parse(localStorage.getItem(KEY) || '{}');
+    } catch (e) {}
+
+    function updateProgress() {
+      var done = boxes.filter(function (b) { return b.checked; }).length;
+      var el = document.getElementById('progressCount');
+      if (el) el.textContent = done + ' / ' + boxes.length;
+    }
+
+    boxes.forEach(function (box) {
+      if (saved[box.id]) box.checked = true;
+      box.closest('li').classList.toggle('done', box.checked);
+      box.addEventListener('change', function () {
+        box.closest('li').classList.toggle('done', box.checked);
+        saved[box.id] = box.checked;
+        try {
+          localStorage.setItem(KEY, JSON.stringify(saved));
+        } catch (e) {}
+        updateProgress();
+      });
+    });
+
+    updateProgress();
+  })();
+</script>
+</body>
+</html>
