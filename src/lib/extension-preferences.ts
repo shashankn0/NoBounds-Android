@@ -3,9 +3,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 // mirrors ios's ExtensionsView: which optional home cards are on, and in what order. purely
 // local/per-device UI state (ios uses @AppStorage/UserDefaults) — never synced to the backend,
 // so each partner can have their own home layout.
-export type ExtensionId = 'date-ideas' | 'gifts' | 'weekly-share' | 'habits' | 'pet' | 'cycle-tracking';
+export type ExtensionId = 'date-ideas' | 'gifts' | 'weekly-share' | 'habits' | 'pet' | 'cycle-tracking' | 'todo-list';
 
-export const EXTENSION_IDS: ExtensionId[] = ['date-ideas', 'gifts', 'weekly-share', 'habits', 'pet', 'cycle-tracking'];
+export const EXTENSION_IDS: ExtensionId[] = ['date-ideas', 'gifts', 'weekly-share', 'habits', 'pet', 'cycle-tracking', 'todo-list'];
 
 export const DEFAULT_EXTENSION_ENABLED: Record<ExtensionId, boolean> = {
   'date-ideas': false,
@@ -14,6 +14,9 @@ export const DEFAULT_EXTENSION_ENABLED: Record<ExtensionId, boolean> = {
   habits: true,
   pet: true,
   'cycle-tracking': true,
+  // matches ios's default (off) — a newer extension than the others, so it doesn't clutter
+  // Home until someone opts in from Extensions
+  'todo-list': false,
 };
 
 const ENABLED_KEY = 'extension_enabled_v1';

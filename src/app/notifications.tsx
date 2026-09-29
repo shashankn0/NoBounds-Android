@@ -26,6 +26,8 @@ const TYPE_ICON: Record<string, keyof typeof Ionicons.glyphMap> = {
   cycle_heads_up: 'calendar',
   cycle_symptom_sos: 'warning',
   pet_activity: 'paw',
+  todo_due_soon: 'checkbox',
+  todo_nudge: 'checkbox',
 };
 const DEFAULT_ICON: keyof typeof Ionicons.glyphMap = 'notifications';
 

@@ -9,7 +9,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { useSession } from '@/contexts/session-context';
 import { useTheme } from '@/hooks/use-theme';
-import { createHabit, updateHabit, type HabitCompletionPolicy, type HabitOwnerScope } from '@/lib/habits';
+import { createHabit, dateKey, updateHabit, type HabitCompletionPolicy, type HabitOwnerScope } from '@/lib/habits';
 import { createImportantDate } from '@/lib/important-dates';
 
 type Page = 'habit' | 'important_date';
@@ -55,8 +55,10 @@ export default function HabitFormScreen() {
         await updateHabit(habitId, title.trim(), couple ? scope : 'mine', policy);
       } else if (page === 'important_date') {
         // real important_dates.event_date is a plain date column, not a picker in this form yet —
-        // defaults to today, matching the read-only "When" pill shown below
-        const eventDate = new Date().toISOString().slice(0, 10);
+        // defaults to today, matching the read-only "When" pill shown below. must be the LOCAL
+        // calendar day (dateKey), not toISOString's UTC day — that shifted "today" to tomorrow
+        // for anyone west of UTC once local time passed into UTC's next day (e.g. 9pm EST/6pm PST)
+        const eventDate = dateKey(new Date());
         await createImportantDate(title.trim(), eventDate, couple?.id ?? null, description.trim() || undefined, repeatsYearly);
       } else {
         await createHabit(title.trim(), couple?.id ?? null, couple ? scope : 'mine', policy);

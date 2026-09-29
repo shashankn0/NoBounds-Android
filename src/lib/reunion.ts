@@ -7,29 +7,35 @@ export type ReunionStatus =
   | { kind: 'together'; dayNumber: number }
   | { kind: 'past' };
 
-// mirrors reunioncountdowncalculator.swift — both the stored dates and "today" are compared as
-// utc-midnight day numbers, not local time, so partners in different timezones see the same countdown
-function utcDayNumber(y: number, m: number, d: number): number {
+// day-number helper: Date.UTC of a y/m/d triple is only ever used as a stable, DST-proof 24h
+// grid to diff calendar days — it never represents a real UTC instant. reunion_start_date /
+// reunion_end_date are plain local calendar-day strings (like habits' dateKey), so "today" must
+// come from the device's LOCAL date fields too. this used to read getUTCFullYear/etc instead,
+// which compared "today" as its UTC calendar day against dates meant as local calendar days —
+// the same bug class Shaan's CycleDateCodec fix addressed on iOS. in any negative-UTC-offset
+// timezone (all of the US) that flipped the countdown a day early every evening, since e.g. 9pm
+// PST is already tomorrow in UTC.
+function dayNumber(y: number, m: number, d: number): number {
   return Math.floor(Date.UTC(y, m - 1, d) / 86_400_000);
 }
 
-function utcDayFromDateOnly(dateOnly: string): number {
+function dayNumberFromDateOnly(dateOnly: string): number {
   const [y, m, d] = dateOnly.split('-').map(Number);
-  return utcDayNumber(y, m, d);
+  return dayNumber(y, m, d);
 }
 
-function utcDayFromInstant(date: Date): number {
-  return utcDayNumber(date.getUTCFullYear(), date.getUTCMonth() + 1, date.getUTCDate());
+function dayNumberFromLocalInstant(date: Date): number {
+  return dayNumber(date.getFullYear(), date.getMonth() + 1, date.getDate());
 }
 
 export function reunionStatus(startDate: string | null, endDate: string | null, now: Date = new Date()): ReunionStatus {
   if (!startDate) return { kind: 'noDateSet' };
 
-  const today = utcDayFromInstant(now);
-  const start = utcDayFromDateOnly(startDate);
+  const today = dayNumberFromLocalInstant(now);
+  const start = dayNumberFromDateOnly(startDate);
 
   if (endDate) {
-    const end = utcDayFromDateOnly(endDate);
+    const end = dayNumberFromDateOnly(endDate);
     if (today >= start && today <= end) {
       return { kind: 'together', dayNumber: today - start + 1 };
     }

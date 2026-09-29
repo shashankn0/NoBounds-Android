@@ -7,6 +7,7 @@ export function routeForNotification(type: string, payload: Record<string, unkno
   const data = payload ?? {};
   const photoId = typeof data.photo_id === 'string' ? data.photo_id : undefined;
   const habitId = typeof data.habit_id === 'string' ? data.habit_id : undefined;
+  const todoId = typeof data.todo_id === 'string' ? data.todo_id : undefined;
 
   switch (type) {
     case 'presence_new_photo':
@@ -35,6 +36,10 @@ export function routeForNotification(type: string, payload: Record<string, unkno
       break;
     case 'pet_activity':
       router.push('/play');
+      break;
+    case 'todo_due_soon':
+    case 'todo_nudge':
+      router.push(todoId ? { pathname: '/todo-list', params: { taskId: todoId } } : '/todo-list');
       break;
     default:
       break;

@@ -8,6 +8,7 @@ import { CyclePhaseBar } from '@/components/cycle-phase-bar';
 import { HabitRow } from '@/components/habit-row';
 import { HomeDateIdeasCard } from '@/components/home-date-ideas-card';
 import { HomeGiftIdeasCard } from '@/components/home-gift-ideas-card';
+import { HomeTodoListCard } from '@/components/home-todo-list-card';
 import { HomeWeeklyShareCard } from '@/components/home-weekly-share-card';
 import { NBCard } from '@/components/nb-card';
 import { NBPrimaryButton, NBSecondaryButton } from '@/components/nb-button';
@@ -239,6 +240,10 @@ export default function HomeScreen() {
         return couple ? <HomeGiftIdeasCard coupleId={couple.id} /> : null;
       case 'weekly-share':
         return couple && session ? <HomeWeeklyShareCard coupleId={couple.id} currentUserId={session.user.id} /> : null;
+      case 'todo-list':
+        return couple && session ? (
+          <HomeTodoListCard coupleId={couple.id} currentUserId={session.user.id} partnerName={couple.partnerName?.trim() || 'Partner'} />
+        ) : null;
     }
   }
 

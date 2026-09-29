@@ -68,6 +68,12 @@ const EXTENSIONS: ExtensionRow[] = [
     title: 'Cycle tracking',
     description: 'A home card for couples cycle tracking — optionally share selected details with your partner for support.',
   },
+  {
+    id: 'todo-list',
+    icon: 'checkbox',
+    title: 'To-do list',
+    description: 'A home card for your to-do list — tasks, subtasks, and due dates, plus a peek at what’s on your partner’s plate.',
+  },
 ];
 
 // where a dragged row's finger position would land among the OTHER rows' natural (non-dragged)

@@ -166,6 +166,18 @@ function RootNavigator() {
             }}
           />
           <Stack.Screen name="photo-detail" options={{ headerShown: false }} />
+          <Stack.Screen
+            name="todo-list"
+            options={{
+              headerShown: false,
+              presentation: 'formSheet',
+              sheetAllowedDetents: [1],
+              sheetGrabberVisible: true,
+              sheetInitialDetentIndex: 0,
+              sheetExpandsWhenScrolledToEdge: true,
+            }}
+          />
+          <Stack.Screen name="todo-item-detail" options={{ presentation: 'modal' }} />
         </Stack.Protected>
       </Stack>
     </ThemeProvider>
