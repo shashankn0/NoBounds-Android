@@ -325,9 +325,10 @@ export async function fetchDailyEntries(sinceDate: string): Promise<CycleDailyEn
   return (data as CycleDailyEntry[]) ?? [];
 }
 
-// partner reads: RLS's cycle_partner_can_view() gate handles visibility server-side — these
-// plain selects just come back empty when the partner hasn't shared that data, no client-side
-// permission check needed to avoid an error
+// partner reads: visibility is enforced server-side, so these just come back empty when the
+// partner hasn't shared that data — no client-side permission check needed to avoid an error.
+// profile/permissions/period logs are plain selects gated by RLS; daily entries must go through
+// the masked cycle_partner_daily_entries rpc because the table itself is now owner-only
 export async function fetchPartnerProfile(partnerUserId: string): Promise<CycleTrackingProfile | null> {
   const { data, error } = await supabase.from('cycle_tracking_profiles').select('*').eq('user_id', partnerUserId).maybeSingle();
   if (error) throw error;
@@ -351,14 +352,13 @@ export async function fetchPartnerPeriodLogs(partnerUserId: string): Promise<Cyc
 }
 
 export async function fetchPartnerDailyEntries(partnerUserId: string, sinceDate: string): Promise<CycleDailyEntry[]> {
-  const { data, error } = await supabase
-    .from('cycle_daily_entries')
-    .select('*')
-    .eq('user_id', partnerUserId)
-    .gte('entry_date', sinceDate)
-    .order('entry_date', { ascending: false });
+  const { data, error } = await supabase.rpc('cycle_partner_daily_entries', {
+    p_owner_user_id: partnerUserId,
+    p_since: sinceDate,
+  });
   if (error) throw error;
-  return (data as CycleDailyEntry[]) ?? [];
+  // the rpc has no ORDER BY — newest first, same as the table query it replaces
+  return ((data as CycleDailyEntry[]) ?? []).sort((a, b) => b.entry_date.localeCompare(a.entry_date));
 }
 
 export function isProfileActivelySharing(profile: CycleTrackingProfile | null): boolean {
