@@ -53,12 +53,13 @@ function render() {
     const b = document.createElement('button');
     b.className = 'person';
     const email = Object.assign(document.createElement('span'), { className: 'email', textContent: wrapAt(p.email) });
-    const circle = Object.assign(document.createElement('span'), { className: 'circle', textContent: '✓' });
+    const circle = Object.assign(document.createElement('span'), { className: 'circle' });
     circle.setAttribute('aria-hidden', 'true');
     b.append(email, circle);
     if (doneToday.has(p.id)) {
       b.classList.add('done');
       b.disabled = true;
+      circle.textContent = '✓';
       email.append(Object.assign(document.createElement('small'), { textContent: 'Done for today' }));
     } else if (!open) {
       b.disabled = true;
@@ -71,7 +72,7 @@ function render() {
   const n = doneToday.size;
   $('count').textContent = `${n} of ${roster.length} checked in today (need at least ${REQUIRED})`;
   $('barFill').style.width = `${roster.length ? (100 * n) / roster.length : 0}%`;
-  $('barFill').style.background = n >= REQUIRED ? '#2E7D32' : '#B4532F';
+  $('barFill').style.background = n >= REQUIRED ? '#2E7D32' : '#C96442';
   $('waiting').replaceChildren(...roster.filter((p) => !doneToday.has(p.id))
     .map((p) => Object.assign(document.createElement('li'), { textContent: wrapAt(p.email) })));
 
