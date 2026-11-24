@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#F5F0E8">
+  <title>NoBounds Test Check-in</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main>
+    <header>
+      <h1>NoBounds Test Check-in</h1>
+      <p id="day" class="day">Loading…</p>
+    </header>
+
+    <p class="instruction">Tap your email below once a day, after you open the NoBounds app.</p>
+
+    <p id="message" class="message" role="status" hidden></p>
+
+    <div id="people" class="people"></div>
+
+    <section class="card">
+      <h2 id="count">&nbsp;</h2>
+      <div class="bar"><div id="barFill" class="bar-fill"></div></div>
+    </section>
+
+    <section class="card">
+      <h2>Still waiting on today</h2>
+      <ul id="waiting" class="waiting"></ul>
+    </section>
+
+    <section class="card">
+      <h2>14-day record</h2>
+      <p class="legend"><span class="yes">✓</span> checked in &nbsp; <span class="no">✗</span> missed &nbsp; · today, not yet</p>
+      <div class="grid-wrap"><table id="grid" class="grid"></table></div>
+    </section>
+  </main>
+
+  <dialog id="confirm" class="sheet">
+    <div class="handle"></div>
+    <p class="sheet-title">Check in as</p>
+    <p id="confirmEmail" class="sheet-email"></p>
+    <button id="yes" class="big-check"><span class="tick">✓</span>Yes, check me in</button>
+    <button id="cancel" class="text-btn">Cancel</button>
+  </dialog>
+
+  <script src="app.js"></script>
+</body>
+</html>
