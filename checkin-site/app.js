@@ -9,6 +9,8 @@ const TIMEZONE = 'America/New_York';
 const SUPABASE_URL = 'https://sutwtioaupdpcazhzoss.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_dCr65dquGFVgCyf7zhk7Ow_eoX_jYuI';
 
+const CHECK = '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
+const CROSS = '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7l10 10M17 7L7 17"/></svg>';
 const $ = (id) => document.getElementById(id);
 // Zero-width space lets long emails wrap before the @ instead of mid-word.
 const wrapAt = (e) => e.replace('@', '​@');
@@ -71,7 +73,7 @@ function render() {
     if (doneToday.has(p.id)) {
       b.classList.add('done');
       b.disabled = true;
-      circle.textContent = '✓';
+      circle.innerHTML = CHECK;
       email.append(Object.assign(document.createElement('small'), { textContent: 'Done for today' }));
     } else if (!open) {
       b.disabled = true;
@@ -95,9 +97,9 @@ function render() {
   const head = `<tr><th>Name</th>${days.map((d) => `<th title="${d}">${pretty(d, { month: 'numeric', day: 'numeric' })}</th>`).join('')}</tr>`;
   const rows = roster.map((p) => {
     const cells = days.map((d) => {
-      if (has.has(`${p.id}|${d}`)) return '<td class="yes">✓</td>';
+      if (has.has(`${p.id}|${d}`)) return `<td class="yes" aria-label="checked in">${CHECK}</td>`;
       if (d < TRACK_FROM || d > today) return '<td></td>';
-      return d === today ? '<td>·</td>' : '<td class="no">✗</td>';
+      return d === today ? '<td><span class="dot"></span></td>' : `<td class="no" aria-label="missed">${CROSS}</td>`;
     }).join('');
     return `<tr><td title="${p.email}">${p.email.split('@')[0]}</td>${cells}</tr>`;
   });

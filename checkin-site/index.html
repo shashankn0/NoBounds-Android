@@ -7,7 +7,7 @@
   <title>NoBounds Test Check-in</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,600;8..60,700&display=swap">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -41,7 +41,7 @@
 
     <section class="card">
       <h2>Check-in record</h2>
-      <p class="legend"><span class="yes">✓</span> checked in &nbsp; <span class="no">✗</span> missed &nbsp; · today, not yet</p>
+      <p class="legend"><span class="yes"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span> checked in &nbsp; <span class="no"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7l10 10M17 7L7 17"/></svg></span> missed &nbsp; <span class="dot"></span> today, not yet</p>
       <div id="gridWrap" class="grid-wrap"><table id="grid" class="grid"></table></div>
     </section>
   </main>
@@ -50,7 +50,7 @@
     <div class="handle"></div>
     <p class="sheet-title">Check in as</p>
     <p id="confirmEmail" class="sheet-email"></p>
-    <button id="yes" class="big-check"><span class="tick">✓</span>Yes, check me in</button>
+    <button id="yes" class="big-check"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>Yes, check me in</button>
     <button id="cancel" class="text-btn">Cancel</button>
   </dialog>
 
