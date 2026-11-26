@@ -44,10 +44,22 @@ function render() {
   const open = today >= TRACK_FROM;
   const doneToday = new Set(checkins.filter((c) => c.check_date === today).map((c) => c.roster_id));
 
-  $('day').textContent =
-    dayNum < 1 ? `Starts ${pretty(START_DATE, { weekday: 'long', month: 'long', day: 'numeric' })}`
-    : dayNum > DAYS ? 'Keep checking in until we tell you we are done.'
-    : `Day ${dayNum} of ${DAYS} - ${pretty(today, { weekday: 'long', month: 'long', day: 'numeric' })}`;
+  $('day').textContent = dayNum < 1
+    ? `Starts ${pretty(START_DATE, { weekday: 'long', month: 'long', day: 'numeric' })}`
+    : `Day ${dayNum} - ${pretty(today, { weekday: 'long', month: 'long', day: 'numeric' })}`;
+
+  // Google's rule: the same 12+ people in for DAYS days in a row. Today counts once it qualifies.
+  const byDay = (d) => new Set(checkins.filter((c) => c.check_date === d).map((c) => c.roster_id));
+  const yesterday = addDays(today, -1);
+  const tToday = streak(roster.map((p) => p.id), byDay, today, TRACK_FROM, REQUIRED);
+  const good = tToday || streak(roster.map((p) => p.id), byDay, yesterday, TRACK_FROM, REQUIRED);
+  const left = Math.max(DAYS - good, 0);
+  const finish = addDays(tToday ? today : yesterday, left);
+  $('tally').textContent = `${Math.min(good, DAYS)} of ${DAYS} good days in a row · ${left} ${left === 1 ? 'day' : 'days'} left`;
+  $('tallyNote').textContent = (left
+    ? `Earliest finish: ${pretty(finish, { weekday: 'long', month: 'long', day: 'numeric' })}. `
+    : 'Done! Keep checking in until we tell you we are done. ')
+    + `A day is good when at least ${REQUIRED} of the same people have checked in every day of the run. If it breaks, it starts over.`;
 
   $('people').replaceChildren(...roster.map((p) => {
     const b = document.createElement('button');
@@ -76,8 +88,9 @@ function render() {
   $('waiting').replaceChildren(...roster.filter((p) => !doneToday.has(p.id))
     .map((p) => Object.assign(document.createElement('li'), { textContent: wrapAt(p.email) })));
 
-  // Grid: one row per person, one column per test day.
-  const days = Array.from({ length: DAYS }, (_, i) => addDays(START_DATE, i));
+  // Grid: one row per person, one column per day from the start until the earliest finish (at least DAYS).
+  const last = finish > addDays(START_DATE, DAYS - 1) ? finish : addDays(START_DATE, DAYS - 1);
+  const days = Array.from({ length: daysBetween(START_DATE, last) + 1 }, (_, i) => addDays(START_DATE, i));
   const has = new Set(checkins.map((c) => `${c.roster_id}|${c.check_date}`));
   const head = `<tr><th>Name</th>${days.map((d) => `<th title="${d}">${pretty(d, { month: 'numeric', day: 'numeric' })}</th>`).join('')}</tr>`;
   const rows = roster.map((p) => {
@@ -89,6 +102,27 @@ function render() {
     return `<tr><td title="${p.email}">${p.email.split('@')[0]}</td>${cells}</tr>`;
   });
   $('grid').innerHTML = head + rows.join('');
+  // Scroll so today's column is in view.
+  $('gridWrap').scrollLeft = Math.max(0, (daysBetween(START_DATE, today) - 4) * 36);
+}
+
+// Length of the run of days ending at `end` in which one group of `need`+ people checked in every day.
+function streak(ids, byDay, end, from, need) {
+  let group = new Set(ids);
+  let n = 0;
+  for (let d = end; d >= from; d = addDays(d, -1)) {
+    const inDay = byDay(d);
+    group = new Set([...group].filter((id) => inDay.has(id)));
+    if (group.size < need) break;
+    n++;
+  }
+  return n;
+}
+{ // self-check: 12 same people for 2 days, then a day with only 11 of them
+  const day = { d1: 'abcdefghijkl', d2: 'abcdefghijklm', d3: 'abcdefghijk' };
+  const by = (d) => new Set(day[{ '2026-01-01': 'd1', '2026-01-02': 'd2', '2026-01-03': 'd3' }[d]] || '');
+  console.assert(streak([...'abcdefghijklm'], by, '2026-01-02', '2026-01-01', 12) === 2, 'streak 2');
+  console.assert(streak([...'abcdefghijklm'], by, '2026-01-03', '2026-01-01', 12) === 0, 'streak broken');
 }
 
 function showMessage(text, isError) {
